@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "key": "client-side-flag-1-always-true",
+      "name": "Always True (boolean)",
+      "kind": "boolean",
+      "variations": [
+        { "_id": "v-true", "value": true },
+        { "_id": "v-false", "value": false }
+      ],
+      "clientSideAvailability": {
+        "usingEnvironmentId": true,
+        "usingMobileKey": false
+      },
+      "tags": ["demo"],
+      "archived": false,
+      "environments": {
+        "production": { "on": true },
+        "test": { "on": true }
+      }
+    },
+    {
+      "key": "ui-theme",
+      "name": "UI Theme (multivariate string)",
+      "kind": "multivariate",
+      "variations": [
+        { "_id": "v-green", "value": "green", "name": "Forest" },
+        { "_id": "v-red", "value": "red", "name": "Crimson" },
+        { "_id": "v-blue", "value": "blue", "name": "Ocean" }
+      ],
+      "clientSideAvailability": {
+        "usingEnvironmentId": true,
+        "usingMobileKey": true
+      },
+      "tags": ["ui"],
+      "archived": false,
+      "environments": {
+        "production": { "on": false },
+        "test": { "on": true }
+      }
+    },
+    {
+      "key": "server-only-secret-rollout",
+      "name": "Server-Only Secret Rollout",
+      "kind": "boolean",
+      "variations": [
+        { "_id": "s-true", "value": true },
+        { "_id": "s-false", "value": false }
+      ],
+      "clientSideAvailability": {
+        "usingEnvironmentId": false,
+        "usingMobileKey": false
+      },
+      "tags": ["backend"],
+      "archived": false,
+      "environments": {
+        "production": { "on": true },
+        "test": { "on": false }
+      }
+    }
+  ],
+  "totalCount": 4,
+  "_links": {
+    "self": { "href": "/api/v2/flags/default?env=production&summary=1&limit=3" },
+    "next": {
+      "href": "/api/v2/flags/default?env=production&summary=1&limit=3&offset=3"
+    }
+  }
+}

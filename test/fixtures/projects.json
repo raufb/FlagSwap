@@ -1,0 +1,46 @@
+{
+  "items": [
+    {
+      "key": "default",
+      "name": "Default Project",
+      "environments": {
+        "items": [
+          {
+            "_id": "5cc8a87be4b564081fd2fd70",
+            "key": "production",
+            "name": "Production",
+            "apiKey": "sdk-REDACTED-SECRET-DO-NOT-STORE",
+            "mobileKey": "mob-REDACTED-SECRET-DO-NOT-STORE",
+            "color": "417505"
+          },
+          {
+            "_id": "6a362e921ef8180a8ad24218",
+            "key": "test",
+            "name": "Test",
+            "apiKey": "sdk-REDACTED-SECRET-DO-NOT-STORE-2",
+            "mobileKey": "mob-REDACTED-SECRET-DO-NOT-STORE-2",
+            "color": "f5a623"
+          }
+        ]
+      }
+    },
+    {
+      "key": "mobile-app",
+      "name": "Mobile App",
+      "environments": {
+        "items": [
+          {
+            "_id": "aaaa1111bbbb2222cccc3333",
+            "key": "production",
+            "name": "Production",
+            "apiKey": "sdk-REDACTED",
+            "mobileKey": "mob-REDACTED"
+          }
+        ]
+      }
+    }
+  ],
+  "_links": {
+    "self": { "href": "/api/v2/projects?expand=environments" }
+  }
+}

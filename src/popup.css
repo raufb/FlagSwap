@@ -1,0 +1,337 @@
+/* FlagSwap popup styles (Phase 2a). Vanilla CSS, no build. */
+:root {
+  color-scheme: light dark;
+  --accent: #2da44e;
+  --accent-bg: rgba(45, 164, 78, 0.08);
+  --border: rgba(128, 128, 128, 0.3);
+  --muted: #888;
+  --danger: #d1242f;
+  --warn: #b5651d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+  margin: 0;
+  padding: 12px;
+  width: 380px;
+}
+
+h1 {
+  font-size: 14px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.sub {
+  color: var(--muted);
+  margin: 2px 0 0;
+  font-size: 11px;
+}
+
+/* ---- tabs ---- */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  appearance: none;
+  border: none;
+  background: none;
+  font: inherit;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab.active {
+  color: inherit;
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.tab .count {
+  font-size: 9.5px;
+  background: var(--border);
+  border-radius: 8px;
+  padding: 0 5px;
+  margin-left: 4px;
+}
+.panel {
+  display: none;
+}
+.panel.active {
+  display: block;
+}
+
+/* ---- general controls ---- */
+details {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0;
+}
+.field label {
+  font-size: 11px;
+  color: var(--muted);
+}
+input[type="text"],
+input[type="password"],
+input[type="search"],
+select,
+textarea {
+  padding: 4px 6px;
+  font: inherit;
+  width: 100%;
+}
+textarea {
+  resize: vertical;
+}
+.btnrow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+}
+button.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+button.small {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.note {
+  color: var(--warn);
+  font-size: 10.5px;
+  margin: 6px 0 0;
+}
+.safety {
+  color: var(--muted);
+  font-size: 10.5px;
+  margin: 8px 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-bg);
+  border-radius: 3px;
+}
+.status {
+  font-size: 11px;
+  margin: 6px 0 0;
+  min-height: 14px;
+}
+.status.ok {
+  color: var(--accent);
+}
+.status.err {
+  color: var(--danger);
+}
+.empty {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ---- flag list ---- */
+.toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 8px 0;
+}
+.toolbar input[type="search"] {
+  flex: 1;
+}
+.flag {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.flag.on {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.flag.disabled {
+  opacity: 0.6;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.key {
+  font-size: 12px;
+  word-break: break-word;
+  flex: 1;
+}
+.key .name {
+  font-weight: 500;
+}
+.key .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  display: block;
+}
+.badge {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--border);
+  white-space: nowrap;
+}
+.badge.active {
+  background: var(--accent);
+  color: #fff;
+}
+.val {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.val label {
+  color: var(--muted);
+  font-size: 11px;
+}
+.muted {
+  opacity: 0.45;
+}
+.ssonly {
+  color: var(--danger);
+  font-size: 10.5px;
+  margin-top: 6px;
+}
+
+/* ---- groups / domains cards ---- */
+.card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.card.on {
+  border-color: var(--accent);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-head input[type="text"] {
+  flex: 1;
+}
+.card-title {
+  flex: 1;
+  font-weight: 600;
+}
+.chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 0;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  background: var(--border);
+  border-radius: 10px;
+  padding: 2px 4px 2px 8px;
+}
+.chip .x {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 0 3px;
+}
+.chip .x:hover {
+  color: var(--danger);
+}
+.chip .cval {
+  font-family: ui-monospace, Menlo, monospace;
+}
+.subrow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.subrow select {
+  flex: 1;
+}
+.grouptoggles {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+.grouptoggles label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.help {
+  color: var(--muted);
+  font-size: 10.5px;
+  margin: 4px 0 8px;
+}
+.csid {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+footer {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

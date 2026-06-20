@@ -1,0 +1,42 @@
+{
+  "items": [
+    {
+      "key": "legacy-snippet-flag",
+      "name": "Legacy Snippet Flag (includeInSnippet)",
+      "kind": "boolean",
+      "variations": [
+        { "_id": "l-true", "value": true },
+        { "_id": "l-false", "value": false }
+      ],
+      "includeInSnippet": true,
+      "tags": ["legacy"],
+      "archived": false,
+      "environments": {
+        "production": { "on": false },
+        "test": { "on": false }
+      }
+    },
+    {
+      "key": "archived-old-flag",
+      "name": "Archived Old Flag",
+      "kind": "boolean",
+      "variations": [
+        { "_id": "a-true", "value": true },
+        { "_id": "a-false", "value": false }
+      ],
+      "clientSideAvailability": {
+        "usingEnvironmentId": true,
+        "usingMobileKey": false
+      },
+      "tags": [],
+      "archived": true,
+      "environments": {
+        "production": { "on": false }
+      }
+    }
+  ],
+  "totalCount": 4,
+  "_links": {
+    "self": { "href": "/api/v2/flags/default?env=production&summary=1&limit=3&offset=3" }
+  }
+}

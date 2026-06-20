@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "FlagSwap",
+  "version": "0.1.0",
+  "description": "Override LaunchDarkly client-side feature flags in the browser (PoC).",
+  "permissions": ["storage"],
+  "host_permissions": ["https://app.launchdarkly.com/*"],
+  "action": {
+    "default_title": "FlagSwap",
+    "default_popup": "src/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["src/core.js", "src/inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["*://*/*"],
+      "js": ["src/state.js", "src/bridge.js", "src/banner.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": true
+    }
+  ]
+}

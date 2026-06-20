@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlagSwap Tier-2 — useReport + streaming transport probe</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        max-width: 680px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, Menlo, monospace;
+      }
+      .big {
+        font-size: 22px;
+        font-weight: 600;
+      }
+      #stats {
+        background: #f5f5f5;
+        padding: 10px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>FlagSwap Tier-2 transport probe</h1>
+    <p>
+      Real LD trial env <code>6a362e921ef8180a8ad24218</code>, flag
+      <code>test</code> (real value <code>true</code>). With an override seeded
+      (<code>test &rarr; false</code>) the value below should read
+      <code>false</code> if our interception holds.
+    </p>
+    <p>
+      Mode: <strong id="mode"></strong> (add <code>?report=1</code> for
+      <code>useReport:true</code>).
+    </p>
+
+    <p>
+      flag <code>test</code> = <span class="big" id="flag-test">…</span>
+    </p>
+
+    <h3>Transport stats (<code>window.__FLAGSWAP_STATS</code>)</h3>
+    <pre id="stats">…</pre>
+    <p id="status">initializing…</p>
+
+    <!-- Same CDN SDK as demo/index.html -->
+    <script src="https://unpkg.com/launchdarkly-js-client-sdk@3/dist/ldclient.min.js"></script>
+    <script>
+      (function () {
+        var ENV = "6a362e921ef8180a8ad24218";
+        var context = { kind: "user", key: "flagswap-test", anonymous: true };
+
+        var params = new URLSearchParams(location.search);
+        var useReport = params.get("report") === "1";
+
+        document.getElementById("mode").textContent = useReport
+          ? "REPORT (useReport:true)"
+          : "default (GET)";
+
+        // Force streaming on. The browser SDK opens a stream when streaming is
+        // enabled and/or a change listener is attached; we do both to be sure.
+        var options = {
+          streaming: true,
+          useReport: useReport,
+        };
+
+        var flagEl = document.getElementById("flag-test");
+        var statsEl = document.getElementById("stats");
+        var statusEl = document.getElementById("status");
+
+        function dumpStats() {
+          var s = window.__FLAGSWAP_STATS || {};
+          statsEl.textContent = JSON.stringify(s, null, 2);
+        }
+        function renderFlag(client) {
+          flagEl.textContent = JSON.stringify(client.variation("test", "UNSET"));
+          dumpStats();
+        }
+
+        var client = LDClient.initialize(ENV, context, options);
+
+        client.on("ready", function () {
+          statusEl.textContent =
+            "ready (FlagSwap injected: " +
+            (window.__FLAGSWAP_INJECTED ? "yes" : "no") +
+            ")";
+          renderFlag(client);
+        });
+        // Registering a change listener helps ensure a stream is opened.
+        client.on("change", function () {
+          statusEl.textContent = "change @ " + new Date().toLocaleTimeString();
+          renderFlag(client);
+        });
+        client.on("failed", function (e) {
+          statusEl.textContent = "LD failed: " + (e && e.message);
+          dumpStats();
+        });
+
+        // Keep stats fresh even if no SDK event fires (the stream may open after
+        // 'ready'); the E2E polls __FLAGSWAP_STATS directly anyway.
+        setInterval(dumpStats, 500);
+      })();
+    </script>
+  </body>
+</html>

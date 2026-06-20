@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlagSwap demo — LaunchDarkly client SDK</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        max-width: 640px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 6px 10px;
+        text-align: left;
+      }
+      th {
+        background: #f5f5f5;
+      }
+      code {
+        font-family: ui-monospace, Menlo, monospace;
+      }
+      #status {
+        color: #666;
+      }
+      td[data-val] {
+        font-family: ui-monospace, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>FlagSwap demo</h1>
+    <p>
+      Loads the real LaunchDarkly client SDK against the shared demo env
+      <code>5cc8a87be4b564081fd2fd70</code>. With the FlagSwap extension loaded
+      and an override enabled, the values below should reflect the OVERRIDE, not
+      LD's real values.
+    </p>
+    <p id="status">initializing…</p>
+    <table>
+      <thead>
+        <tr>
+          <th>flag key</th>
+          <th>value</th>
+        </tr>
+      </thead>
+      <tbody id="flags"></tbody>
+    </table>
+
+    <!-- Pin to v3 of the official client SDK. -->
+    <script src="https://unpkg.com/launchdarkly-js-client-sdk@3/dist/ldclient.min.js"></script>
+    <script>
+      (function () {
+        var ENV = "5cc8a87be4b564081fd2fd70";
+        var context = { kind: "user", key: "flagswap-test", anonymous: true };
+        var statusEl = document.getElementById("status");
+        var tbody = document.getElementById("flags");
+
+        function renderAll(flags) {
+          tbody.innerHTML = "";
+          Object.keys(flags)
+            .sort()
+            .forEach(function (k) {
+              var tr = document.createElement("tr");
+              var tdK = document.createElement("td");
+              tdK.innerHTML = "<code>" + k + "</code>";
+              var tdV = document.createElement("td");
+              tdV.setAttribute("data-val", k);
+              tdV.textContent = JSON.stringify(flags[k]);
+              tr.appendChild(tdK);
+              tr.appendChild(tdV);
+              tbody.appendChild(tr);
+            });
+        }
+
+        var client = LDClient.initialize(ENV, context);
+        client.on("ready", function () {
+          statusEl.textContent =
+            "ready (FlagSwap injected: " +
+            (window.__FLAGSWAP_INJECTED ? "yes" : "no") +
+            ")";
+          renderAll(client.allFlags());
+        });
+        client.on("change", function () {
+          statusEl.textContent = "change @ " + new Date().toLocaleTimeString();
+          renderAll(client.allFlags());
+        });
+        client.on("failed", function (e) {
+          statusEl.textContent = "LD failed: " + (e && e.message);
+        });
+      })();
+    </script>
+  </body>
+</html>

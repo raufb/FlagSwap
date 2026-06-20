@@ -1,0 +1,10 @@
+{
+  "key": "client-side-flag-1-always-true",
+  "version": 2,
+  "flagVersion": 12,
+  "value": true,
+  "variation": 0,
+  "trackEvents": false,
+  "trackReason": false,
+  "debugEventsUntilDate": 0
+}
