@@ -34,18 +34,10 @@
     return "flagswap:flagCache:" + proj + ":" + env;
   }
 
-  // ---- demo fallback flags (used when no token configured) ---------------
-  var DEMO_FLAGS = [
-    { key: "client-side-flag-1-always-true", kind: "boolean", clientSideAvailable: true },
-    {
-      key: "client-side-flag-2-always-green",
-      kind: "multivariate",
-      clientSideAvailable: true,
-      variations: [{ value: "green" }, { value: "red" }, { value: "blue" }],
-    },
-    { key: "client-side-flag-3-does-name-start-with-b", kind: "boolean", clientSideAvailable: true },
-    { key: "client-side-flag-4-has-valid-email", kind: "boolean", clientSideAvailable: true },
-  ];
+  // No pre-populated flags. Until a LaunchDarkly token is connected (which syncs
+  // the real flag list), the Flags tab shows only flags the user adds manually
+  // or has an override for.
+  var DEMO_FLAGS = [];
 
   // ---- in-memory state ----------------------------------------------------
   var rich = { version: 1, globalOverrides: {}, groups: [], domains: [] };
@@ -388,7 +380,7 @@
       var e = selection.envKey || els.env.value;
       els.sourceNote.textContent = "Synced flags from " + p + " / " + e + ".";
     } else {
-      els.sourceNote.textContent = "Demo flags (connect a LaunchDarkly token to sync real flags).";
+      els.sourceNote.textContent = "No flags synced — add a flag manually below, or connect a LaunchDarkly token to sync the real list.";
     }
   }
   function loadCachedSelection() {
