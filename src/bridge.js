@@ -52,6 +52,16 @@
 
   function push(overrides) {
     var detail = { overrides: overrides || {} };
+    // Firefox: objects created in the content-script (ISOLATED) compartment are
+    // NOT readable by MAIN-world (page) code — reading ev.detail.overrides in
+    // inject.js throws "Permission denied to access property". cloneInto exposes
+    // a copy in the page compartment so the page can read it. Chrome has no
+    // cloneInto and needs none (its MAIN/ISOLATED CustomEvent passing works).
+    if (typeof cloneInto === "function") {
+      try {
+        detail = cloneInto(detail, window);
+      } catch (e) {}
+    }
     // Dispatch on both window and document so the MAIN listener (on window)
     // always hears it regardless of timing/target conventions.
     try {

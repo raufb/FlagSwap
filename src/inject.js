@@ -66,9 +66,16 @@
   // The bridge dispatches CustomEvent('flagswap:overrides', { detail: {...} }).
   // We listen on window (bridge dispatches on both window & document to be safe).
   window.addEventListener("flagswap:overrides", function (ev) {
-    var detail = ev && ev.detail;
-    if (detail && typeof detail.overrides === "object") {
-      overrides = detail.overrides || {};
+    // Wrap detail access: on Firefox a cross-compartment read could throw, and
+    // we must ALWAYS markReady() afterward — otherwise the readiness gate never
+    // releases and the EventSource wrapper stalls the LD stream until timeout.
+    try {
+      var detail = ev && ev.detail;
+      if (detail && typeof detail.overrides === "object") {
+        overrides = detail.overrides || {};
+      }
+    } catch (e) {
+      // ignore; still release the gate below.
     }
     markReady();
   });

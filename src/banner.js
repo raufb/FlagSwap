@@ -132,9 +132,13 @@
   // ---- event handling -----------------------------------------------------
 
   function onOverrides(ev) {
-    var overrides = ev && ev.detail && ev.detail.overrides;
-    var count =
-      overrides && typeof overrides === "object" ? Object.keys(overrides).length : 0;
+    var count = 0;
+    try {
+      var overrides = ev && ev.detail && ev.detail.overrides;
+      if (overrides && typeof overrides === "object") count = Object.keys(overrides).length;
+    } catch (e) {
+      count = 0; // cross-compartment read guard (Firefox)
+    }
     renderIndicator(count);
     reportCount(count);
   }
