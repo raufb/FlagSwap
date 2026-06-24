@@ -24,6 +24,8 @@
   "use strict";
 
   var EVENT_NAME = "flagswap:overrides";
+  var SCHEMAS_EVENT = "flagswap:schemas";
+  var DISCOVERED_KEY = "flagswap:discoveredFlags";
   var State = window.__FlagSwapState;
 
   // Keys the bridge cares about (state schema + legacy flat overrides).
@@ -81,6 +83,38 @@
     // If storage is unavailable for any reason, still release the gate.
     push({});
   }
+
+  // Receive flag schemas discovered by inject.js from intercepted LD eval
+  // responses and persist them so the popup can show typed value controls
+  // (toggle for booleans, number input, etc.) without needing an API token.
+  try {
+    window.addEventListener(SCHEMAS_EVENT, function (ev) {
+      try {
+        var rawSchemas;
+        try { rawSchemas = ev && ev.detail && ev.detail.schemas; } catch (e) { return; }
+        if (!rawSchemas || typeof rawSchemas !== "object") return;
+        // JSON round-trip handles Firefox cross-compartment object wrappers.
+        var schemas;
+        try { schemas = JSON.parse(JSON.stringify(rawSchemas)); } catch (e) { return; }
+        chrome.storage.local.get([DISCOVERED_KEY], function (res) {
+          var existing = (res && res[DISCOVERED_KEY]) || {};
+          var changed = false;
+          for (var key in schemas) {
+            if (!Object.prototype.hasOwnProperty.call(schemas, key)) continue;
+            var incoming = schemas[key];
+            if (!existing[key] || existing[key].kind !== incoming.kind) {
+              existing[key] = { kind: incoming.kind };
+              changed = true;
+            }
+          }
+          if (!changed) return;
+          var write = {};
+          write[DISCOVERED_KEY] = existing;
+          chrome.storage.local.set(write);
+        });
+      } catch (e) {}
+    });
+  } catch (e) {}
 
   // Live updates: re-resolve + re-push whenever EITHER key changes.
   try {

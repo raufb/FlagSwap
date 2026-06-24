@@ -85,6 +85,35 @@
   // a short timeout with whatever overrides we have (likely none).
   setTimeout(markReady, 3000);
 
+  // ---- schema broadcast (for popup value controls) ------------------------
+  // When we parse an LD eval response we can infer each flag's kind from its
+  // value type. Firing this event lets bridge.js store discovered kinds so the
+  // popup can show toggles / number inputs instead of raw text fields — even
+  // without a LaunchDarkly API token configured.
+  function extractAndBroadcastSchemas(flagsMap) {
+    if (!flagsMap || typeof flagsMap !== "object") return;
+    var schemas = {};
+    var keys = Object.keys(flagsMap);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (!Object.prototype.hasOwnProperty.call(flagsMap, k)) continue;
+      var flag = flagsMap[k];
+      if (!flag || typeof flag !== "object") continue;
+      var val = flag.value;
+      var kind;
+      if (typeof val === "boolean") kind = "boolean";
+      else if (typeof val === "string") kind = "string";
+      else if (typeof val === "number") kind = "number";
+      else if (val !== null && typeof val === "object") kind = "json";
+      if (kind) schemas[k] = { kind: kind };
+    }
+    if (Object.keys(schemas).length) {
+      try {
+        window.dispatchEvent(new CustomEvent("flagswap:schemas", { detail: { schemas: schemas } }));
+      } catch (e) {}
+    }
+  }
+
   // ---- fetch wrapper (polling) --------------------------------------------
   var origFetch = window.fetch ? window.fetch.bind(window) : null;
   if (origFetch) {
@@ -114,6 +143,7 @@
           .clone()
           .json()
           .then(function (body) {
+            extractAndBroadcastSchemas(body);
             var rewritten = Core.applyOverridesToMap(body, overrides);
             log("poll rewrite", url);
             var headers = new Headers(resp.headers);
@@ -245,6 +275,7 @@
           return;
         }
         var body = JSON.parse(raw);
+        extractAndBroadcastSchemas(body);
         var rewrittenObj = Core.applyOverridesToMap(body, overrides);
         var text = JSON.stringify(rewrittenObj);
         this._rewritten = { text: text, json: rewrittenObj };

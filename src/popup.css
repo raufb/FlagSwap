@@ -26,6 +26,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
+  justify-content: space-between;
 }
 
 h2 {
@@ -101,6 +102,7 @@ summary {
   color: var(--muted);
 }
 input[type="text"],
+input[type="number"],
 input[type="password"],
 input[type="search"],
 select,
@@ -243,6 +245,45 @@ button.small {
   margin-top: 6px;
 }
 
+/* ---- toggle switch ---- */
+input[type="checkbox"].toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border);
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  margin: 0;
+}
+input[type="checkbox"].toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+input[type="checkbox"].toggle:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"].toggle:checked::after {
+  left: 16px;
+}
+input[type="checkbox"].toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---- groups / domains cards ---- */
 .card {
   border: 1px solid var(--border);
@@ -323,6 +364,95 @@ button.small {
   font-size: 10.5px;
   color: var(--muted);
   word-break: break-all;
+}
+
+/* ---- header controls ---- */
+.icon-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 2px;
+  color: var(--muted);
+  line-height: 1;
+}
+.icon-btn:hover { color: inherit; }
+.link-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* ---- flag rows (name + toggle layout) ---- */
+.flag-row {
+  display: flex;
+  align-items: center;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  min-height: 36px;
+}
+.flag-row:last-child { border-bottom: none; }
+.flag-row.overriding > .flag-label > .fname { font-weight: 600; }
+.flag-row.ss { opacity: 0.5; }
+.flag-label {
+  flex: 1;
+  min-width: 0;
+}
+.flag-label .fname {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.flag-label .fkey {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flag-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.ov-badge {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clr-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.clr-btn:hover { color: var(--danger); }
+/* Greyed-out toggle = no active override */
+input[type="checkbox"].toggle.inactive {
+  opacity: 0.35;
 }
 
 footer {

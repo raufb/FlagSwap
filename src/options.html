@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlagSwap Settings</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <h1>FlagSwap Settings</h1>
+
+    <!-- ===== LaunchDarkly connection ===== -->
+    <section class="settings-section">
+      <h2>LaunchDarkly Connection</h2>
+      <div class="field">
+        <label for="ld-token">API access token (Reader scope)</label>
+        <input
+          id="ld-token"
+          type="password"
+          placeholder="api-xxxxxxxx"
+          autocomplete="off"
+        />
+      </div>
+      <div class="field">
+        <label for="ld-base">Region / base URL</label>
+        <select id="ld-base">
+          <option value="https://app.launchdarkly.com">
+            Commercial (app.launchdarkly.com)
+          </option>
+          <option value="https://app.eu.launchdarkly.com">
+            EU (app.eu.launchdarkly.com)
+          </option>
+          <option value="https://app.launchdarkly.us">
+            Federal/US (app.launchdarkly.us)
+          </option>
+        </select>
+      </div>
+      <div class="btnrow">
+        <button id="ld-save" class="primary">Save</button>
+        <button id="ld-test">Test connection</button>
+        <button id="ld-forget" title="Remove the saved token">Forget token</button>
+      </div>
+      <p class="status" id="ld-status"></p>
+      <p class="note">
+        Token stored unencrypted in this browser's local storage. Use a
+        Reader-scoped token; revoke anytime in LaunchDarkly.
+      </p>
+    </section>
+
+    <!-- ===== Sync flags ===== -->
+    <section class="settings-section" id="sync" style="display: none">
+      <h2>Sync Flags</h2>
+      <div class="field">
+        <label for="ld-project">Project</label>
+        <select id="ld-project"></select>
+      </div>
+      <div class="field">
+        <label for="ld-env">Environment</label>
+        <select id="ld-env"></select>
+      </div>
+      <p class="sub">Client-side ID: <span class="csid" id="ld-csid">—</span></p>
+      <div class="btnrow">
+        <button id="ld-sync" class="primary">Sync flags</button>
+        <button id="ld-refresh">Force refresh</button>
+      </div>
+      <p class="status" id="sync-status"></p>
+    </section>
+
+    <!-- ===== Manual flag overrides ===== -->
+    <section class="settings-section">
+      <h2>Manual Flag Overrides</h2>
+      <p class="help">
+        Add an override for any flag key — even one not in your synced list.
+        Pick the type so the popup shows the right control.
+      </p>
+      <div class="manual-add-form">
+        <div class="field">
+          <label for="manual-key">Flag key</label>
+          <input
+            id="manual-key"
+            type="text"
+            placeholder="my-feature-flag"
+            list="discovered-keys"
+          />
+          <datalist id="discovered-keys"></datalist>
+        </div>
+        <div class="field">
+          <label for="manual-type">Value type</label>
+          <select id="manual-type">
+            <option value="boolean">boolean</option>
+            <option value="string">string</option>
+            <option value="number">number</option>
+            <option value="json">json</option>
+          </select>
+        </div>
+        <div class="field" id="manual-value-field">
+          <label for="manual-value">Initial value</label>
+          <div id="manual-value-host"></div>
+        </div>
+        <div class="btnrow">
+          <button id="manual-add-btn" class="primary small">Add flag</button>
+        </div>
+        <p class="status" id="manual-status"></p>
+      </div>
+      <div id="manual-flags-list"></div>
+    </section>
+
+    <!-- ===== Backup ===== -->
+    <section class="settings-section">
+      <h2>Backup</h2>
+      <div class="btnrow">
+        <button id="export-btn">Export config</button>
+        <button id="import-btn">Import config</button>
+        <input
+          id="import-file"
+          type="file"
+          accept="application/json,.json"
+          style="display: none"
+        />
+      </div>
+      <p class="status" id="backup-status"></p>
+      <p class="help">
+        Exports your overrides, groups, and domains as a JSON file (your
+        LaunchDarkly token is never included). Import it in another browser to
+        copy your setup.
+      </p>
+    </section>
+
+    <script src="state.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

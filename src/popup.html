@@ -7,66 +7,11 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <h1>FlagSwap</h1>
-    <p class="sub" id="source-note">Demo flags (no LaunchDarkly token configured).</p>
-
-    <!-- ===== LaunchDarkly connection ===== -->
-    <details id="settings">
-      <summary>LaunchDarkly connection</summary>
-      <div class="field">
-        <label for="ld-token">API access token (Reader scope)</label>
-        <input
-          id="ld-token"
-          type="password"
-          placeholder="api-xxxxxxxx"
-          autocomplete="off"
-        />
-      </div>
-      <div class="field">
-        <label for="ld-base">Region / base URL</label>
-        <select id="ld-base">
-          <option value="https://app.launchdarkly.com">
-            Commercial (app.launchdarkly.com)
-          </option>
-          <option value="https://app.eu.launchdarkly.com">
-            EU (app.eu.launchdarkly.com)
-          </option>
-          <option value="https://app.launchdarkly.us">
-            Federal/US (app.launchdarkly.us)
-          </option>
-        </select>
-      </div>
-      <div class="btnrow">
-        <button id="ld-save">Save</button>
-        <button id="ld-test">Test connection</button>
-        <button id="ld-forget" title="Remove the saved token">Forget token</button>
-      </div>
-      <p class="status" id="ld-status"></p>
-
-      <!-- project / env sync, shown after connect -->
-      <div id="sync" style="display: none">
-        <h2 style="margin-top: 12px">Sync flags</h2>
-        <div class="field">
-          <label for="ld-project">Project</label>
-          <select id="ld-project"></select>
-        </div>
-        <div class="field">
-          <label for="ld-env">Environment</label>
-          <select id="ld-env"></select>
-        </div>
-        <p class="sub">Client-side ID: <span class="csid" id="ld-csid">—</span></p>
-        <div class="btnrow">
-          <button id="ld-sync">Sync flags</button>
-          <button id="ld-refresh">Refresh</button>
-        </div>
-        <p class="status" id="sync-status"></p>
-      </div>
-
-      <p class="note">
-        Token stored unencrypted in this browser's local storage. Use a
-        Reader-scoped token; revoke anytime in LaunchDarkly.
-      </p>
-    </details>
+    <h1>
+      FlagSwap
+      <button id="settings-btn" class="icon-btn" title="Open settings">⚙</button>
+    </h1>
+    <p class="sub" id="source-note">Loading…</p>
 
     <p class="safety">
       Overrides apply only in your browser — FlagSwap never changes server-side
@@ -98,34 +43,28 @@
       <p class="sub" id="override-summary"></p>
       <div id="flags"></div>
 
-      <!-- Manual add-flag: override any arbitrary flag key not in sync/demo -->
       <details id="manual-add">
-        <summary>+ Add flag manually</summary>
-        <p class="help">
-          Override any flag key, even one not in your synced/demo list.
-        </p>
+        <summary>+ Add flag override</summary>
+        <p class="help">Override any flag key not in your synced list.</p>
         <div class="field">
           <label for="manual-key">Flag key</label>
-          <input id="manual-key" type="text" placeholder="my-feature-flag" />
-        </div>
-        <div class="field">
-          <label for="manual-type">Value type</label>
-          <select id="manual-type">
-            <option value="boolean">boolean</option>
-            <option value="string">string</option>
-            <option value="number">number</option>
-            <option value="json">json</option>
-          </select>
-        </div>
-        <div class="field" id="manual-value-field">
-          <label for="manual-value">Value</label>
-          <!-- value control swapped in by JS based on the type -->
-          <div id="manual-value-host"></div>
+          <input
+            id="manual-key"
+            type="text"
+            placeholder="my-feature-flag"
+            list="discovered-keys"
+            autocomplete="off"
+          />
+          <datalist id="discovered-keys"></datalist>
         </div>
         <div class="btnrow">
-          <button id="manual-add-btn" class="primary small">Add flag</button>
+          <button id="manual-add-btn" class="primary small">Add override</button>
         </div>
         <p class="status" id="manual-status"></p>
+        <p class="help" style="margin-top:4px">
+          To set the type (boolean / string / number / json) open
+          <button id="goto-settings" class="link-btn">Settings</button>.
+        </p>
       </details>
     </section>
 
@@ -163,34 +102,11 @@
       <div id="domains"></div>
     </section>
 
-    <!-- ===== Backup: export / import config ===== -->
-    <div id="backup">
-      <h2 style="margin-top: 14px">Backup</h2>
-      <div class="btnrow">
-        <button id="export-btn" class="small">Export config</button>
-        <button id="import-btn" class="small">Import config</button>
-        <input
-          id="import-file"
-          type="file"
-          accept="application/json,.json"
-          style="display: none"
-        />
-      </div>
-      <p class="status" id="backup-status"></p>
-      <p class="help">
-        Exports your overrides, groups, and domains as a JSON file (your
-        LaunchDarkly token is never included). Import it in another browser to
-        copy your setup.
-      </p>
-    </div>
-
     <footer>
       <button id="clear" class="danger small">Clear all overrides</button>
       <span id="cache-info"></span>
     </footer>
 
-    <!-- state.js exposes window.__FlagSwapState (migrate + schema). Must load
-         before popup.js. -->
     <script src="state.js"></script>
     <script src="popup.js"></script>
   </body>

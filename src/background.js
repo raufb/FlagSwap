@@ -264,6 +264,15 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   // BEFORE the ld:* switch — and we return false so it never holds the channel
   // open or interferes with the ld:* `return true` async pattern. We use
   // sender.tab.id only, so the broad "tabs" permission is NOT required.
+  // Open settings in a new tab — delegated here so the background (which
+  // outlives the popup window) creates the tab reliably in both Chrome and Firefox.
+  if (msg.type === "ui:openSettings") {
+    try {
+      chrome.tabs.create({ url: chrome.runtime.getURL("src/options.html") });
+    } catch (e) {}
+    return false;
+  }
+
   if (msg.type === "flagswap:count") {
     var tabId = sender && sender.tab && sender.tab.id;
     if (typeof tabId === "number" && chrome.action && chrome.action.setBadgeText) {
