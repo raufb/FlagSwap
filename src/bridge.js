@@ -102,8 +102,14 @@
           for (var key in schemas) {
             if (!Object.prototype.hasOwnProperty.call(schemas, key)) continue;
             var incoming = schemas[key];
-            if (!existing[key] || existing[key].kind !== incoming.kind) {
-              existing[key] = { kind: incoming.kind };
+            var existingEntry = existing[key];
+            var kindChanged = !existingEntry || existingEntry.kind !== incoming.kind;
+            var valueChanged = incoming.value !== undefined &&
+                               (!existingEntry || existingEntry.value !== incoming.value);
+            if (kindChanged || valueChanged) {
+              var newEntry = { kind: incoming.kind };
+              if (incoming.value !== undefined) newEntry.value = incoming.value;
+              existing[key] = newEntry;
               changed = true;
             }
           }

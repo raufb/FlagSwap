@@ -25,7 +25,10 @@
   var rich = { version: 1, globalOverrides: {}, groups: [], domains: [] };
   var flags = null;         // synced flag list (null = no sync yet)
   var flagFilter = "";
-  var discoveredFlags = {}; // {[key]: {kind}} from intercepted LD eval responses
+  var discoveredFlags = {}; // {[key]: {kind, value?}} from intercepted LD eval responses
+  var showServerSide = false;
+  var sortField = "name";
+  var sortAsc = true;
 
   // ---- DOM refs -----------------------------------------------------------
   var $ = function (id) { return document.getElementById(id); };
@@ -46,6 +49,8 @@
     domainPattern: $("domain-pattern"), domainMatchType: $("domain-matchtype"),
     domainAdd: $("domain-add"), domains: $("domains"),
     clear: $("clear"), cacheInfo: $("cache-info"),
+    flagSort: $("flag-sort"), flagSortDir: $("flag-sort-dir"),
+    showServerSide: $("show-server-side"),
   };
 
   // ---- storage helpers ----------------------------------------------------
@@ -104,7 +109,10 @@
   // ---- source note (connection status) ------------------------------------
   function updateSourceNote() {
     if (flags && flags.length) {
-      els.sourceNote.textContent = "Showing " + flags.length + " synced flag(s).";
+      var ssCount = flags.filter(function (f) { return f.clientSideAvailable === false; }).length;
+      var note = "Showing " + flags.length + " synced flag(s)";
+      if (ssCount && !showServerSide) note += " (" + ssCount + " server-side hidden)";
+      els.sourceNote.textContent = note + ".";
     } else {
       els.sourceNote.textContent = flags
         ? "0 flags synced — check Settings to re-sync."
@@ -132,13 +140,41 @@
     var base = activeFlags();
     var seen = {};
     var out  = [];
-    base.forEach(function (f) { seen[f.key] = true; out.push(f); });
+    base.forEach(function (f) {
+      if (!showServerSide && f.clientSideAvailable === false) return;
+      seen[f.key] = true;
+      out.push(f);
+    });
     Object.keys(rich.globalOverrides).forEach(function (key) {
       if (seen[key]) return;
       seen[key] = true;
       out.push({ key: key, manual: true, clientSideAvailable: true });
     });
     return out;
+  }
+
+  function sortFlags(list) {
+    return list.slice().sort(function (a, b) {
+      var cmp = 0;
+      if (sortField === "name") {
+        var na = (a.name || a.key).toLowerCase();
+        var nb = (b.name || b.key).toLowerCase();
+        cmp = na < nb ? -1 : na > nb ? 1 : 0;
+      } else if (sortField === "override") {
+        var oa = !!(rich.globalOverrides[a.key] && rich.globalOverrides[a.key].enabled);
+        var ob = !!(rich.globalOverrides[b.key] && rich.globalOverrides[b.key].enabled);
+        cmp = (ob ? 1 : 0) - (oa ? 1 : 0);
+      } else if (sortField === "status") {
+        var ra = a.on === true ? 0 : a.on === false ? 1 : 2;
+        var rb = b.on === true ? 0 : b.on === false ? 1 : 2;
+        cmp = ra - rb;
+      } else if (sortField === "side") {
+        var sa = a.clientSideAvailable === false ? 1 : 0;
+        var sb = b.clientSideAvailable === false ? 1 : 0;
+        cmp = sa - sb;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
   }
 
   // Build one flag row: [name] [×?] [ov-badge?] [toggle]
@@ -217,6 +253,28 @@
         saveState();
       });
       ctrls.appendChild(sel);
+    }
+
+    // Default status (LD targeting state from sync, or observed value from intercept)
+    var defStatus = null, defClass = "", defTitle = "";
+    if (flag.on !== undefined) {
+      defStatus = flag.on ? "on" : "off";
+      defClass  = flag.on ? "ds-on" : "ds-off";
+      defTitle  = "LD targeting: " + defStatus;
+    } else {
+      var disc = discoveredFlags[flag.key];
+      if (disc && disc.value !== undefined) {
+        defStatus = String(disc.value).slice(0, 6);
+        defClass  = disc.value === true ? "ds-on" : disc.value === false ? "ds-off" : "ds-val";
+        defTitle  = "Observed default: " + display(disc.value);
+      }
+    }
+    if (defStatus !== null) {
+      var dsBadge = document.createElement("span");
+      dsBadge.className = "default-status " + defClass;
+      dsBadge.textContent = defStatus;
+      dsBadge.title = defTitle;
+      ctrls.appendChild(dsBadge);
     }
 
     // Main toggle
@@ -320,19 +378,20 @@
   }
 
   function renderFlags() {
-    els.flags.innerHTML = "";
-    var list   = displayedFlags();
-    var q      = flagFilter.trim().toLowerCase();
-    var shown  = list.filter(function (f) {
+    els.flags.innerHTML = “”;
+    var list     = displayedFlags();
+    var q        = flagFilter.trim().toLowerCase();
+    var filtered = list.filter(function (f) {
       if (!q) return true;
       return (f.key  && f.key.toLowerCase().indexOf(q)  >= 0) ||
              (f.name && f.name.toLowerCase().indexOf(q) >= 0);
     });
+    var shown = sortFlags(filtered);
 
     if (!shown.length) {
-      var empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = q ? "No flags match “" + flagFilter + "”." : "No flags.";
+      var empty = document.createElement(“p”);
+      empty.className = “empty”;
+      empty.textContent = q ? “No flags match “” + flagFilter + “”.” : “No flags.”;
       els.flags.appendChild(empty);
       return;
     }
@@ -505,40 +564,70 @@
     return chip;
   }
 
-  function buildAddFlagRow(group) {
-    var row  = document.createElement("div");
+  function buildSearchCombobox(avail, placeholder, onAdd) {
+    var row = document.createElement("div");
     row.className = "subrow";
-    var sel  = document.createElement("select");
+    if (!avail.length) {
+      var none = document.createElement("span");
+      none.className = "sub";
+      none.textContent = "(all flags added)";
+      row.appendChild(none);
+      return row;
+    }
+    var wrap = document.createElement("div");
+    wrap.className = "combobox-wrap";
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.placeholder = placeholder || "Search flags…";
+    inp.autocomplete = "off";
+    var drop = document.createElement("div");
+    drop.className = "combobox-dropdown";
+    drop.style.display = "none";
+    function renderDrop(q) {
+      drop.innerHTML = "";
+      var lower = (q || "").trim().toLowerCase();
+      var matches = avail.filter(function (f) {
+        if (!lower) return true;
+        return f.key.toLowerCase().indexOf(lower) >= 0 ||
+               (f.name && f.name.toLowerCase().indexOf(lower) >= 0);
+      });
+      if (!matches.length) { drop.style.display = "none"; return; }
+      matches.slice(0, 25).forEach(function (f) {
+        var opt = document.createElement("div");
+        opt.className = "combobox-option";
+        opt.textContent = f.name && f.name !== f.key ? f.name + " (" + f.key + ")" : f.key;
+        opt.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          drop.style.display = "none";
+          inp.value = "";
+          onAdd(f.key);
+        });
+        drop.appendChild(opt);
+      });
+      drop.style.display = "block";
+    }
+    inp.addEventListener("input", function () { renderDrop(inp.value); });
+    inp.addEventListener("focus", function () { renderDrop(inp.value); });
+    inp.addEventListener("blur", function () {
+      setTimeout(function () { drop.style.display = "none"; }, 150);
+    });
+    wrap.appendChild(inp);
+    wrap.appendChild(drop);
+    row.appendChild(wrap);
+    return row;
+  }
+
+  function buildAddFlagRow(group) {
     var avail = activeFlags().filter(function (f) {
       return f.clientSideAvailable !== false && !(group.flags && group.flags[f.key]);
     });
-    if (!avail.length) {
-      var opt = document.createElement("option");
-      opt.textContent = "(all flags added)"; opt.value = "";
-      sel.appendChild(opt); sel.disabled = true;
-    } else {
-      var ph = document.createElement("option");
-      ph.value = ""; ph.textContent = "Add flag…";
-      sel.appendChild(ph);
-      avail.forEach(function (f) {
-        var o = document.createElement("option");
-        o.value = f.key;
-        o.textContent = f.name && f.name !== f.key ? f.name + " (" + f.key + ")" : f.key;
-        sel.appendChild(o);
-      });
-    }
-    var btn = document.createElement("button");
-    btn.className = "small"; btn.textContent = "Add"; btn.disabled = !avail.length;
-    btn.addEventListener("click", function () {
-      var key = sel.value; if (!key) return;
+    return buildSearchCombobox(avail, "Add flag…", function (key) {
       var flag  = flagByKey(key);
       var entry = { value: defaultValueFor(flag) };
       if (flag && flag.kind === "boolean") entry.variation = boolVariation(false);
       group.flags[key] = entry;
       saveState().then(renderGroups);
     });
-    row.appendChild(sel); row.appendChild(btn);
-    return row;
   }
 
   // =========================================================================
@@ -692,39 +781,16 @@
   }
 
   function buildAddDomainOverrideRow(domain) {
-    var row  = document.createElement("div");
-    row.className = "subrow";
-    var sel  = document.createElement("select");
     var avail = activeFlags().filter(function (f) {
       return f.clientSideAvailable !== false && !domain.overrides[f.key];
     });
-    if (!avail.length) {
-      var opt = document.createElement("option");
-      opt.textContent = "(all flags added)"; opt.value = "";
-      sel.appendChild(opt); sel.disabled = true;
-    } else {
-      var ph = document.createElement("option");
-      ph.value = ""; ph.textContent = "Add override…";
-      sel.appendChild(ph);
-      avail.forEach(function (f) {
-        var o = document.createElement("option");
-        o.value = f.key;
-        o.textContent = f.name && f.name !== f.key ? f.name + " (" + f.key + ")" : f.key;
-        sel.appendChild(o);
-      });
-    }
-    var btn = document.createElement("button");
-    btn.className = "small"; btn.textContent = "Add"; btn.disabled = !avail.length;
-    btn.addEventListener("click", function () {
-      var key = sel.value; if (!key) return;
+    return buildSearchCombobox(avail, "Add override…", function (key) {
       var flag  = flagByKey(key);
       var entry = { value: defaultValueFor(flag), enabled: true };
       if (flag && flag.kind === "boolean") entry.variation = boolVariation(false);
       domain.overrides[key] = entry;
       saveState().then(renderDomains);
     });
-    row.appendChild(sel); row.appendChild(btn);
-    return row;
   }
 
   // =========================================================================
@@ -762,6 +828,23 @@
 
   els.flagSearch.addEventListener("input", function () {
     flagFilter = els.flagSearch.value;
+    renderFlags();
+  });
+
+  els.flagSort.addEventListener("change", function () {
+    sortField = els.flagSort.value;
+    renderFlags();
+  });
+
+  els.flagSortDir.addEventListener("click", function () {
+    sortAsc = !sortAsc;
+    els.flagSortDir.textContent = sortAsc ? "↑" : "↓";
+    renderFlags();
+  });
+
+  els.showServerSide.addEventListener("change", function () {
+    showServerSide = els.showServerSide.checked;
+    updateSourceNote();
     renderFlags();
   });
 

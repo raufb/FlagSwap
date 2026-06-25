@@ -465,3 +465,73 @@ footer {
   justify-content: space-between;
   align-items: center;
 }
+
+/* ---- toolbar additions ---- */
+.toolbar-check {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--muted);
+}
+#flag-sort {
+  width: auto;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+/* ---- flag default status badge ---- */
+.default-status {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.default-status.ds-on {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.default-status.ds-off {
+  background: var(--border);
+  color: var(--muted);
+}
+.default-status.ds-val {
+  background: var(--border);
+  color: inherit;
+}
+
+/* ---- searchable flag combobox ---- */
+.combobox-wrap {
+  position: relative;
+  flex: 1;
+}
+.combobox-wrap input[type="text"] {
+  width: 100%;
+}
+.combobox-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+@media (prefers-color-scheme: dark) {
+  .combobox-dropdown { background: #1e1e1e; }
+}
+.combobox-option {
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.combobox-option:hover {
+  background: var(--accent-bg);
+}

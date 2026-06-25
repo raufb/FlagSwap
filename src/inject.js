@@ -105,7 +105,7 @@
       else if (typeof val === "string") kind = "string";
       else if (typeof val === "number") kind = "number";
       else if (val !== null && typeof val === "object") kind = "json";
-      if (kind) schemas[k] = { kind: kind };
+      if (kind) schemas[k] = { kind: kind, value: val };
     }
     if (Object.keys(schemas).length) {
       try {

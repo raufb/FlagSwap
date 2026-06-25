@@ -39,6 +39,16 @@
           type="search"
           placeholder="Filter by key or name…"
         />
+        <select id="flag-sort" title="Sort flags">
+          <option value="name">Name</option>
+          <option value="override">Override</option>
+          <option value="status">Status</option>
+          <option value="side">Side</option>
+        </select>
+        <button id="flag-sort-dir" class="icon-btn" title="Toggle sort direction">↑</button>
+        <label class="toolbar-check" title="Show server-side flags">
+          <input type="checkbox" id="show-server-side" /> SS
+        </label>
       </div>
       <p class="sub" id="override-summary"></p>
       <div id="flags"></div>
