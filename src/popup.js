@@ -378,7 +378,7 @@
   }
 
   function renderFlags() {
-    els.flags.innerHTML = “”;
+    els.flags.innerHTML = "";
     var list     = displayedFlags();
     var q        = flagFilter.trim().toLowerCase();
     var filtered = list.filter(function (f) {
@@ -389,9 +389,9 @@
     var shown = sortFlags(filtered);
 
     if (!shown.length) {
-      var empty = document.createElement(“p”);
-      empty.className = “empty”;
-      empty.textContent = q ? “No flags match “” + flagFilter + “”.” : “No flags.”;
+      var empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent = q ? "No flags match “" + flagFilter + "”." : "No flags.";
       els.flags.appendChild(empty);
       return;
     }
