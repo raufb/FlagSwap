@@ -2,6 +2,11 @@
   "background": {
     "scripts": ["src/ldapi.js", "src/background.js"]
   },
+  "sidebar_action": {
+    "default_panel": "src/popup.html?ctx=panel",
+    "default_title": "FlagSwap",
+    "open_at_install": false
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "flagswap@flagswap.dev",

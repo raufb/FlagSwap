@@ -20,6 +20,13 @@ body {
   width: 380px;
 }
 
+/* Side panel (Chrome) / sidebar (Firefox): fill the docked pane, which the
+   user can resize, instead of the fixed popup width. */
+body.ctx-panel {
+  width: auto;
+  min-width: 280px;
+}
+
 h1 {
   font-size: 14px;
   margin: 0;
@@ -378,6 +385,12 @@ input[type="checkbox"].toggle:disabled {
   line-height: 1;
 }
 .icon-btn:hover { color: inherit; }
+.h-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
 .link-btn {
   appearance: none;
   border: none;

@@ -30,11 +30,21 @@
   var sortField = "name";
   var sortAsc = true;
 
+  // Are we rendered inside a docked side panel / sidebar, or the popup?
+  // The panel/sidebar manifest entries load popup.html with ?ctx=panel.
+  var ctx = (function () {
+    try { return new URLSearchParams(location.search).get("ctx") || "popup"; }
+    catch (e) { return "popup"; }
+  })();
+  var isPanel = ctx === "panel";
+
   // ---- DOM refs -----------------------------------------------------------
   var $ = function (id) { return document.getElementById(id); };
   var els = {
     sourceNote: $("source-note"),
     settingsBtn: $("settings-btn"),
+    refreshBtn: $("refresh-btn"),
+    dockBtn: $("dock-btn"),
     tabFlags: $("tab-flags"),
     countFlags: $("count-flags"), countGroups: $("count-groups"), countDomains: $("count-domains"),
     flagSearch: $("flag-search"),
@@ -826,6 +836,48 @@
     els.gotoSettings.addEventListener("click", openSettings);
   }
 
+  // Reload the active tab so the user need not reach for the browser's reload.
+  // tabs.reload() with no id targets the active tab of the current window and
+  // needs no extra permission in either Chrome or Firefox.
+  function reloadActiveTab() {
+    try {
+      if (chrome.tabs && chrome.tabs.reload) chrome.tabs.reload();
+    } catch (e) {}
+  }
+  els.refreshBtn.addEventListener("click", reloadActiveTab);
+
+  // Dock the UI as an always-on sidebar. Chrome uses the right-side Side Panel;
+  // Firefox uses its native sidebar (which the browser docks on the left).
+  function dockAsSidebar() {
+    try {
+      if (chrome.sidePanel && chrome.sidePanel.open) {
+        chrome.windows.getCurrent().then(function (win) {
+          chrome.sidePanel.open({ windowId: win.id })
+            .then(function () { window.close(); })
+            .catch(function () {});
+        });
+        return;
+      }
+    } catch (e) {}
+    try {
+      var sb = (typeof browser !== "undefined" && browser.sidebarAction) ||
+               (typeof chrome !== "undefined" && chrome.sidebarAction);
+      if (sb && sb.open) {
+        sb.open();
+        window.close();
+      }
+    } catch (e) {}
+  }
+  els.dockBtn.addEventListener("click", dockAsSidebar);
+
+  // Panel context: fill the docked pane and hide the (now-redundant) dock
+  // button. Also hide it in a popup that has no sidebar capability at all.
+  var canDock = !!(chrome.sidePanel && chrome.sidePanel.open) ||
+    !!((typeof browser !== "undefined" && browser.sidebarAction) ||
+       (typeof chrome !== "undefined" && chrome.sidebarAction));
+  if (isPanel) document.body.classList.add("ctx-panel");
+  if (isPanel || !canDock) els.dockBtn.style.display = "none";
+
   els.flagSearch.addEventListener("input", function () {
     flagFilter = els.flagSearch.value;
     renderFlags();
@@ -865,24 +917,42 @@
   });
 
   // ---- init -----------------------------------------------------------------
+  // Adopt a freshly-read storage snapshot into in-memory state and re-render.
+  function hydrate(res) {
+    rich = State
+      ? State.migrate(res)
+      : { version: 1, globalOverrides: res["flagswap:overrides"] || {}, groups: [], domains: [] };
+    rich.version = 1;
+    rich.globalOverrides = rich.globalOverrides || {};
+    rich.groups  = rich.groups  || [];
+    rich.domains = rich.domains || [];
+    discoveredFlags = res[K_DISC] || {};
+
+    populateDiscoveredKeys();
+    updateSourceNote();
+    renderAll();
+  }
+
+  // Re-read storage and refresh the view. Used by the panel/sidebar live-sync
+  // listener so an always-on sidebar reflects changes made elsewhere (other
+  // tabs editing, domain auto-switching, a re-sync from Settings). We skip the
+  // refresh while the user is mid-edit so a remote change can't blow away focus.
+  function liveSync() {
+    var ae = document.activeElement;
+    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
+    get([K_STATE, "flagswap:overrides", K_SEL, K_DISC]).then(function (res) {
+      hydrate(res);
+      return loadCachedFlags(res[K_SEL] || {});
+    });
+  }
+
   function init() {
     return get([K_STATE, "flagswap:overrides", K_TOKEN, K_SEL, K_DISC]).then(function (res) {
-      rich = State
-        ? State.migrate(res)
-        : { version: 1, globalOverrides: res["flagswap:overrides"] || {}, groups: [], domains: [] };
-      rich.version = 1;
-      rich.globalOverrides = rich.globalOverrides || {};
-      rich.groups  = rich.groups  || [];
-      rich.domains = rich.domains || [];
-
+      hydrate(res);
       var selection = res[K_SEL] || {};
-      discoveredFlags = res[K_DISC] || {};
 
-      populateDiscoveredKeys();
-      updateSourceNote();
-      renderAll();
-
-      // One-time migration: persist legacy data under new key.
+      // One-time migration: persist legacy data under new key. Runs ONLY here,
+      // never on a live-sync refresh.
       var hadState  = res[K_STATE]             && typeof res[K_STATE]             === "object";
       var hadLegacy = res["flagswap:overrides"] && typeof res["flagswap:overrides"] === "object";
       var promise = (!hadState && hadLegacy) ? saveState() : Promise.resolve();
@@ -890,6 +960,21 @@
       return promise.then(function () {
         return loadCachedFlags(selection);
       });
+    });
+  }
+
+  // Keep a docked sidebar in sync with external storage changes (popup is
+  // short-lived and re-reads on open, so it doesn't need this).
+  if (isPanel && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area !== "local") return;
+      for (var k in changes) {
+        if (k === K_STATE || k === K_DISC || k === K_SEL ||
+            k.indexOf("flagswap:flagCache:") === 0) {
+          liveSync();
+          return;
+        }
+      }
     });
   }
 

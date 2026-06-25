@@ -1,5 +1,9 @@
 {
+  "permissions": ["storage", "sidePanel"],
   "background": {
     "service_worker": "src/background.js"
+  },
+  "side_panel": {
+    "default_path": "src/popup.html?ctx=panel"
   }
 }
