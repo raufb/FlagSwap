@@ -283,7 +283,7 @@
     if (manualType === "boolean") entry.variation = boolVariation(parsed.value === true);
     rich.globalOverrides[key] = entry;
     saveState().then(function () {
-      setStatus(els.manualStatus, "Added "" + key + "".", "ok");
+      setStatus(els.manualStatus, "Added “" + key + "”.", "ok");
       els.manualKey.value = "";
       renderManualValueControl();
       renderManualFlagsList();

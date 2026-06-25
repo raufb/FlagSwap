@@ -332,7 +332,7 @@
     if (!shown.length) {
       var empty = document.createElement("p");
       empty.className = "empty";
-      empty.textContent = q ? "No flags match "" + flagFilter + ""." : "No flags.";
+      empty.textContent = q ? "No flags match “" + flagFilter + "”." : "No flags.";
       els.flags.appendChild(empty);
       return;
     }
@@ -389,7 +389,7 @@
 
     rich.globalOverrides[key] = entry;
     saveState().then(function () {
-      setStatus(els.manualStatus, "Added "" + key + "".", "ok");
+      setStatus(els.manualStatus, "Added “" + key + "”.", "ok");
       els.manualKey.value = "";
       renderAll();
     });
