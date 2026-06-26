@@ -126,6 +126,100 @@ test("normalizeFlags + pagination merge across two pages", () => {
   ]);
 });
 
+// ---- normalizeFlags: served value (LD default, not just `on`) -----------
+
+// variations[0] = true, variations[1] = false (the usual boolean layout).
+const boolVars = [
+  { _id: "v-true", value: true },
+  { _id: "v-false", value: false },
+];
+function boolFlag(envData) {
+  return {
+    key: "b",
+    name: "B",
+    kind: "boolean",
+    variations: boolVars,
+    clientSideAvailability: { usingEnvironmentId: true },
+    environments: { production: envData },
+  };
+}
+
+test("servedValue: on + full fallthrough variation maps to the served value", () => {
+  // on=true but fallthrough serves variation 1 (false) -> default is FALSE,
+  // even though targeting is on. This is the case the raw `on` bit gets wrong.
+  const out = ld.normalizeFlags(
+    [boolFlag({ on: true, fallthrough: { variation: 1 }, offVariation: 0 })],
+    "production"
+  );
+  assert.strictEqual(out[0].on, true);
+  assert.strictEqual(out[0].value, false);
+});
+
+test("servedValue: off serves offVariation, which can be TRUE", () => {
+  // on=false but offVariation is variation 0 (true) -> default is TRUE.
+  const out = ld.normalizeFlags(
+    [boolFlag({ on: false, fallthrough: { variation: 0 }, offVariation: 0 })],
+    "production"
+  );
+  assert.strictEqual(out[0].on, false);
+  assert.strictEqual(out[0].value, true);
+});
+
+test("servedValue: falls back to summary=1 markers when full shape absent", () => {
+  // summary representation: _summary.variations keyed by index, marked.
+  const out = ld.normalizeFlags(
+    [
+      boolFlag({
+        on: true,
+        _summary: {
+          variations: {
+            0: { rules: 0, nullRules: 0, targets: 0, isOff: true },
+            1: { rules: 0, nullRules: 0, targets: 0, isFallthrough: true },
+          },
+          prerequisites: 0,
+        },
+      }),
+    ],
+    "production"
+  );
+  assert.strictEqual(out[0].value, false); // fallthrough is variation 1 (false)
+});
+
+test("servedValue: percentage-rollout fallthrough is indeterminate (undefined)", () => {
+  const out = ld.normalizeFlags(
+    [boolFlag({ on: true, fallthrough: { rollout: { variations: [] } }, offVariation: 1 })],
+    "production"
+  );
+  assert.strictEqual(out[0].value, undefined);
+});
+
+test("servedValue: rollout marked in summary is indeterminate (undefined)", () => {
+  const out = ld.normalizeFlags(
+    [
+      boolFlag({
+        on: true,
+        _summary: {
+          variations: {
+            0: { rules: 0, nullRules: 0, targets: 0, isFallthrough: true, rollout: 60 },
+            1: { rules: 0, nullRules: 0, targets: 0, isFallthrough: true, rollout: 40 },
+          },
+          prerequisites: 0,
+        },
+      }),
+    ],
+    "production"
+  );
+  assert.strictEqual(out[0].value, undefined);
+});
+
+test("servedValue: undefined when env carries only `on` (pre-summary fixtures)", () => {
+  // Existing fixtures only have { on } — no served data, so value is omitted
+  // and the UI falls back to `on`. Locks the graceful-degradation contract.
+  const out = ld.normalizeFlags(flagsP1.items, "test");
+  const f = out.find((x) => x.key === "client-side-flag-1-always-true");
+  assert.strictEqual(f.value, undefined);
+});
+
 // ---- isClientSideAvailable ---------------------------------------------
 
 test("isClientSideAvailable: modern, legacy, and negative cases", () => {

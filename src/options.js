@@ -199,7 +199,8 @@
       return sendSW({ type: "ld:flags", projectKey: proj, envKey: env }).then(function (res) {
         if (!res.ok) { setStatus(els.syncStatus, "Sync failed: " + res.message, "err"); return; }
         var cacheObj = {};
-        cacheObj[ck] = { flags: res.flags || [], ts: Date.now() };
+        // ver 2: flags carry the served-value field (LD default, not just `on`).
+        cacheObj[ck] = { flags: res.flags || [], ts: Date.now(), ver: 2 };
         return set(cacheObj).then(function () {
           setStatus(els.syncStatus, "Synced " + (res.flags || []).length + " flag(s).", "ok");
         });

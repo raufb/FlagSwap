@@ -76,11 +76,86 @@
   }
 
   /**
+   * Find the single variation index flagged with `marker` in a summary=1
+   * `_summary` block (variations keyed by index string). Returns undefined when
+   * absent, ambiguous, or part of a percentage rollout (no single served value).
+   * @param {object} summary  envData._summary
+   * @param {"isFallthrough"|"isOff"} marker
+   * @returns {number|undefined}
+   */
+  function summaryMarkedIndex(summary, marker) {
+    if (!summary || typeof summary.variations !== "object" || !summary.variations) {
+      return undefined;
+    }
+    var vars = summary.variations;
+    var found, count = 0;
+    for (var idx in vars) {
+      if (!Object.prototype.hasOwnProperty.call(vars, idx)) continue;
+      var vs = vars[idx];
+      if (vs && vs[marker] === true) {
+        if (vs.rollout !== undefined) return undefined; // part of a rollout
+        found = idx;
+        count++;
+      }
+    }
+    if (count !== 1) return undefined;
+    var n = parseInt(found, 10);
+    return isNaN(n) ? undefined : n;
+  }
+
+  /**
+   * Resolve the variation index a flag serves by default in this env:
+   *   targeting on  -> the fallthrough variation
+   *   targeting off -> the offVariation
+   * Reads the full representation (fallthrough/offVariation) when present, and
+   * falls back to the condensed summary=1 markers. Returns undefined when it
+   * can't be pinned to one variation (e.g. a percentage-rollout fallthrough).
+   * @param {object} envData  flag.environments[envKey]
+   * @returns {number|undefined}
+   */
+  function servedVariationIndex(envData) {
+    if (!envData || typeof envData !== "object") return undefined;
+    if (envData.on === true) {
+      var ft = envData.fallthrough;
+      if (ft && typeof ft === "object") {
+        if (ft.rollout) return undefined;               // rollout: no single value
+        if (typeof ft.variation === "number") return ft.variation;
+      }
+      return summaryMarkedIndex(envData._summary, "isFallthrough");
+    }
+    if (typeof envData.offVariation === "number") return envData.offVariation;
+    return summaryMarkedIndex(envData._summary, "isOff");
+  }
+
+  /**
+   * The flag's evaluated default value in `envKey` — the value of the served
+   * variation. This is what the flag actually resolves to (NOT the same as the
+   * raw `on` targeting bit, which can serve either variation). undefined when
+   * indeterminate (rollout, or summary/full data absent).
+   * @param {object} flag  raw flag item
+   * @param {string} envKey
+   * @returns {*}
+   */
+  function servedValue(flag, envKey) {
+    if (!flag || typeof flag.environments !== "object" || !flag.environments) {
+      return undefined;
+    }
+    var idx = servedVariationIndex(flag.environments[envKey]);
+    if (typeof idx !== "number") return undefined;
+    var vars = Array.isArray(flag.variations) ? flag.variations : [];
+    if (idx < 0 || idx >= vars.length) return undefined;
+    return vars[idx] ? vars[idx].value : undefined;
+  }
+
+  /**
    * Normalize raw flag items into the minimal UI shape.
    * Archived flags are dropped (not useful for live overrides).
+   * `value` is the flag's evaluated default (served variation value) — used so
+   * the UI's un-overridden state reflects what the flag actually resolves to,
+   * not just the targeting on/off bit. Omitted (undefined) when indeterminate.
    * @param {Array<object>} rawItems
    * @param {string} envKey
-   * @returns {Array<{key,name,kind,variations,clientSideAvailable,on}>}
+   * @returns {Array<{key,name,kind,variations,clientSideAvailable,on,value}>}
    */
   function normalizeFlags(rawItems, envKey) {
     var items = Array.isArray(rawItems) ? rawItems : [];
@@ -96,6 +171,7 @@
         variations: extractVariations(f),
         clientSideAvailable: isClientSideAvailable(f),
         on: envOnState(f, envKey),
+        value: servedValue(f, envKey),
       });
     }
     return out;

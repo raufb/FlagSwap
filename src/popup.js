@@ -24,6 +24,7 @@
   // ---- in-memory state ----------------------------------------------------
   var rich = { version: 1, globalOverrides: {}, groups: [], domains: [] };
   var flags = null;         // synced flag list (null = no sync yet)
+  var flagsCacheVer = 0;    // schema ver of the loaded flag cache (2 = has served values)
   var flagFilter = "";
   var discoveredFlags = {}; // {[key]: {kind, value?}} from intercepted LD eval responses
   var showServerSide = false;
@@ -122,7 +123,13 @@
       var ssCount = flags.filter(function (f) { return f.clientSideAvailable === false; }).length;
       var note = "Showing " + flags.length + " synced flag(s)";
       if (ssCount && !showServerSide) note += " (" + ssCount + " server-side hidden)";
-      els.sourceNote.textContent = note + ".";
+      note += ".";
+      // Pre-v2 caches lack served-value data, so default states fall back to the
+      // raw `on` bit and can be wrong. Nudge a re-sync to pick up real defaults.
+      if (flagsCacheVer && flagsCacheVer < 2) {
+        note += " Force-refresh in Settings for accurate default states.";
+      }
+      els.sourceNote.textContent = note;
     } else {
       els.sourceNote.textContent = flags
         ? "0 flags synced — check Settings to re-sync."
@@ -137,6 +144,7 @@
       var cached = res[ck];
       if (cached && Array.isArray(cached.flags)) {
         flags = cached.flags;
+        flagsCacheVer = typeof cached.ver === "number" ? cached.ver : 1;
         updateSourceNote();
         renderAll();
       }
@@ -187,7 +195,11 @@
     });
   }
 
-  // Build one flag row: [name] [×?] [ov-badge?] [toggle]
+  // Build one flag row: [override-toggle] [name] [value-control | default-badge].
+  // Left toggle = "is an override active?" — same meaning for EVERY flag kind,
+  // and toggling it off clears the override. The right side shows the value
+  // control while overriding (a value toggle for booleans, a dropdown for
+  // multivariate, a text input otherwise), or the flag's real default when not.
   function buildFlagRow(flag) {
     var serverSide  = flag.clientSideAvailable === false;
     var ov          = rich.globalOverrides[flag.key];
@@ -200,6 +212,39 @@
     row.className = "flag-row" +
       (hasOverride ? " overriding" : "") +
       (serverSide  ? " ss" : "");
+
+    // Effective default with no override, in priority order:
+    //   flag.value — LD's served variation value from sync (fallthrough when on,
+    //                offVariation when off): what the flag actually RESOLVES to,
+    //                which is not the same as the raw `on` targeting bit.
+    //   disc.value — value observed live by the interceptor on this page.
+    //   flag.on    — last resort: raw targeting on/off (pre-served-value caches).
+    // Seeds a freshly-enabled override and drives the no-override default badge.
+    var disc = discoveredFlags[flag.key];
+    var baseVal, baseSource;
+    if (flag.value !== undefined)              { baseVal = flag.value; baseSource = "ld"; }
+    else if (disc && disc.value !== undefined) { baseVal = disc.value; baseSource = "observed"; }
+    else if (flag.on !== undefined)            { baseVal = flag.on;    baseSource = "targeting"; }
+
+    // Left toggle: enable/disable an override of ANY type.
+    var ovToggle = document.createElement("input");
+    ovToggle.type = "checkbox";
+    ovToggle.className = "toggle ov-toggle";
+    ovToggle.checked = hasOverride;
+    ovToggle.disabled = serverSide;
+    ovToggle.title = serverSide ? "Server-side flag — can't override"
+                   : hasOverride ? "Override active — click to clear"
+                   : "Enable override";
+    if (!serverSide) {
+      ovToggle.addEventListener("change", function () {
+        if (ovToggle.checked) {
+          rich.globalOverrides[flag.key] = seedOverride(flag, ov, baseVal, isBool, isMulti);
+        } else {
+          delete rich.globalOverrides[flag.key];
+        }
+        saveState().then(renderAll);
+      });
+    }
 
     // Label
     var lbl = document.createElement("div");
@@ -215,121 +260,101 @@
       lbl.appendChild(keyEl);
     }
 
-    // Controls
+    // Right side: value control while overriding, else the default badge.
     var ctrls = document.createElement("div");
     ctrls.className = "flag-controls";
-
     if (serverSide) {
       var ssNote = document.createElement("span");
       ssNote.className = "muted";
       ssNote.style.fontSize = "10.5px";
       ssNote.textContent = "server-side";
       ctrls.appendChild(ssNote);
-      row.appendChild(lbl);
-      row.appendChild(ctrls);
-      return row;
-    }
-
-    // × to clear/remove override
-    if (hasOverride) {
-      var clrBtn = document.createElement("button");
-      clrBtn.className = "clr-btn";
-      clrBtn.textContent = "×";
-      clrBtn.title = flag.manual ? "Remove this override" : "Clear override";
-      clrBtn.addEventListener("click", function () {
-        delete rich.globalOverrides[flag.key];
-        saveState().then(renderAll);
-      });
-      ctrls.appendChild(clrBtn);
-    }
-
-    // Value badge for non-bool/non-multi overrides (show current value)
-    if (hasOverride && !isBool && !isMulti) {
-      var badge = document.createElement("span");
-      badge.className = "ov-badge";
-      badge.textContent = display(ov.value).slice(0, 15);
-      badge.title = display(ov.value);
-      ctrls.appendChild(badge);
-    }
-
-    // Multivariate value selector (visible only when override is active)
-    if (isMulti && hasOverride) {
-      var sel = buildVariationSelect(flag, ov, function (patch) {
-        var e = rich.globalOverrides[flag.key] || { enabled: true };
-        e.value = patch.value;
-        if (typeof patch.variation === "number") e.variation = patch.variation;
-        e.enabled = true;
-        rich.globalOverrides[flag.key] = e;
-        saveState();
-      });
-      ctrls.appendChild(sel);
-    }
-
-    // Default status (LD targeting state from sync, or observed value from intercept)
-    var defStatus = null, defClass = "", defTitle = "";
-    if (flag.on !== undefined) {
-      defStatus = flag.on ? "on" : "off";
-      defClass  = flag.on ? "ds-on" : "ds-off";
-      defTitle  = "LD targeting: " + defStatus;
+    } else if (hasOverride) {
+      ctrls.appendChild(buildOverrideValueControl(flag, ov));
     } else {
-      var disc = discoveredFlags[flag.key];
-      if (disc && disc.value !== undefined) {
-        defStatus = String(disc.value).slice(0, 6);
-        defClass  = disc.value === true ? "ds-on" : disc.value === false ? "ds-off" : "ds-val";
-        defTitle  = "Observed default: " + display(disc.value);
-      }
-    }
-    if (defStatus !== null) {
-      var dsBadge = document.createElement("span");
-      dsBadge.className = "default-status " + defClass;
-      dsBadge.textContent = defStatus;
-      dsBadge.title = defTitle;
-      ctrls.appendChild(dsBadge);
+      var badge = buildDefaultBadge(baseVal, baseSource);
+      if (badge) ctrls.appendChild(badge);
     }
 
-    // Main toggle
-    var tog = document.createElement("input");
-    tog.type = "checkbox";
-    tog.className = "toggle" + (!hasOverride ? " inactive" : "");
-
-    if (isBool) {
-      // Toggle IS the boolean value. ON = true, OFF = false. Both create an
-      // active override. × clears the override entirely.
-      tog.checked = hasOverride && ov.value === true;
-      tog.addEventListener("change", function () {
-        var entry = Object.assign({}, ov || {}, {
-          value: tog.checked,
-          enabled: true,
-          _kind: "boolean",
-          variation: boolVariation(tog.checked),
-        });
-        rich.globalOverrides[flag.key] = entry;
-        saveState().then(renderAll);
-      });
-    } else {
-      // Non-boolean: toggle = is override active (value preserved).
-      tog.checked = hasOverride;
-      tog.addEventListener("change", function () {
-        if (tog.checked) {
-          var existing = ov || {};
-          var entry = {
-            value: existing.value !== undefined ? existing.value : defaultValueFor(flag),
-            enabled: true,
-          };
-          if (isMulti) entry.variation = (typeof existing.variation === "number") ? existing.variation : 0;
-          if (existing._kind) entry._kind = existing._kind;
-          rich.globalOverrides[flag.key] = entry;
-        } else {
-          delete rich.globalOverrides[flag.key];
-        }
-        saveState().then(renderAll);
-      });
-    }
-
-    ctrls.appendChild(tog);
+    row.appendChild(ovToggle);
     row.appendChild(lbl);
     row.appendChild(ctrls);
     return row;
+  }
+
+  // Find the variation index whose value matches `val` (0 if none/absent).
+  function variationIndexFor(flag, val) {
+    if (!flag.variations) return 0;
+    var i = flag.variations.findIndex(function (v) {
+      return JSON.stringify(v.value) === JSON.stringify(val);
+    });
+    return i >= 0 ? i : 0;
+  }
+
+  // Build the override entry for a newly-enabled override.
+  // Booleans seed at the OPPOSITE of the current default (baseVal): the reason
+  // you enable an override is almost always to force the non-default value, so
+  // one click does it. Multivariate/string have no "opposite" — they seed at
+  // the current default and you pick the value with the right-side control.
+  function seedOverride(flag, existingOv, baseVal, isBool, isMulti) {
+    var existing = existingOv || {};
+    if (isBool) {
+      var bv = existing.value !== undefined ? existing.value === true : baseVal !== true;
+      return { value: bv, enabled: true, _kind: "boolean", variation: boolVariation(bv) };
+    }
+    if (isMulti) {
+      var seed = existing.value !== undefined ? existing.value : baseVal;
+      var vi = variationIndexFor(flag, seed);
+      return { value: flag.variations[vi].value, enabled: true, variation: vi };
+    }
+    var entry = {
+      value: existing.value !== undefined ? existing.value
+           : baseVal !== undefined ? baseVal : defaultValueFor(flag),
+      enabled: true,
+    };
+    var fk = flagKind(flag);
+    if (fk && fk !== "boolean" && fk !== "multivariate") entry._kind = fk;
+    return entry;
+  }
+
+  // The right-side value control shown while a GLOBAL override is active.
+  // Thin wrapper over the shared buildValueControl, persisting to globalOverrides.
+  function buildOverrideValueControl(flag, ov) {
+    return buildValueControl(flag, ov, false, function (patch) {
+      var e = Object.assign({}, rich.globalOverrides[flag.key] || {}, { enabled: true });
+      e.value = patch.value;
+      if (typeof patch.variation === "number") e.variation = patch.variation;
+      if (flagKind(flag) === "boolean") e._kind = "boolean";
+      rich.globalOverrides[flag.key] = e;
+      saveState();
+    });
+  }
+
+  // Coerce a text-input override value to its stored kind.
+  function coerceByKind(raw, kind) {
+    if (kind === "number") { var n = Number(raw); return isNaN(n) ? raw : n; }
+    if (kind === "json")   { try { return JSON.parse(raw); } catch (e) { return raw; } }
+    return raw;
+  }
+
+  // Grey badge showing the flag's real default value when no override is active.
+  function buildDefaultBadge(baseVal, baseSource) {
+    if (baseVal === undefined) return null;
+    var defStatus, defClass;
+    if (baseVal === true || baseVal === false) {
+      defStatus = baseVal ? "on" : "off";
+      defClass  = baseVal ? "ds-on" : "ds-off";
+    } else {
+      defStatus = String(baseVal).slice(0, 6);
+      defClass  = "ds-val";
+    }
+    var dsBadge = document.createElement("span");
+    dsBadge.className = "default-status " + defClass;
+    dsBadge.textContent = defStatus;
+    dsBadge.title = (baseSource === "ld" ? "LD default: "
+                   : baseSource === "observed" ? "Observed default: "
+                   : "LD targeting: ") + display(baseVal);
+    return dsBadge;
   }
 
   // Minimal variation <select> for multivariate flags.
@@ -354,37 +379,95 @@
     return sel;
   }
 
-  // Reuse buildVariationSelect for group / domain chips too:
+  // Unified value control for an override entry — shared by the Flags, Groups
+  // and Domains tabs. boolean -> value toggle + true/false label; multivariate
+  // -> variation <select>; else -> text input (coerced to the stored kind). The
+  // control self-updates its display and calls onChange({value, variation?}) to
+  // persist. `disabled` greys it (e.g. a paused domain override).
   function buildValueControl(flag, entry, disabled, onChange) {
     if (isMultivariate(flag)) {
-      var s = buildVariationSelect(flag, entry, onChange);
-      s.disabled = disabled;
-      return s;
+      var sel = buildVariationSelect(flag, entry, onChange);
+      sel.disabled = !!disabled;
+      return sel;
     }
-    if (flag && flag.kind === "boolean") {
+    if (flagKind(flag) === "boolean") {
       var wrap = document.createElement("span");
-      wrap.className = "val";
-      var b = document.createElement("input");
-      b.type = "checkbox";
-      b.className = "toggle";
-      b.checked = entry.value === true;
-      b.disabled = disabled;
-      var bt = document.createElement("span");
-      bt.textContent = b.checked ? "true" : "false";
-      b.addEventListener("change", function () {
-        bt.textContent = b.checked ? "true" : "false";
-        onChange({ value: b.checked, variation: boolVariation(b.checked) });
+      wrap.className = "bool-val";
+      var tog = document.createElement("input");
+      tog.type = "checkbox";
+      tog.className = "toggle";
+      tog.checked = entry.value === true;
+      tog.disabled = !!disabled;
+      tog.title = "Override value (true / false)";
+      var lbl = document.createElement("span");
+      lbl.className = "bool-val-label" + (tog.checked ? " on" : "");
+      lbl.textContent = tog.checked ? "true" : "false";
+      tog.addEventListener("change", function () {
+        lbl.textContent = tog.checked ? "true" : "false";
+        lbl.className = "bool-val-label" + (tog.checked ? " on" : "");
+        onChange({ value: tog.checked, variation: boolVariation(tog.checked) });
       });
-      wrap.appendChild(b); wrap.appendChild(bt);
+      wrap.appendChild(tog);
+      wrap.appendChild(lbl);
       return wrap;
     }
-    var t = document.createElement("input");
-    t.type = "text";
-    t.value = entry.value == null ? "" : String(entry.value);
-    t.disabled = disabled;
-    t.style.maxWidth = "80px";
-    t.addEventListener("change", function () { onChange({ value: t.value }); });
-    return t;
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "ov-input";
+    inp.value = entry.value == null ? "" : String(entry.value);
+    inp.disabled = !!disabled;
+    inp.title = "Override value";
+    inp.addEventListener("change", function () {
+      onChange({ value: coerceByKind(inp.value, entry._kind || flagKind(flag)) });
+    });
+    return inp;
+  }
+
+  // Shared override row for the Groups & Domains tabs — same layout and feel as
+  // the Flags tab: [left toggle] [name] [value control] [×?]. opts:
+  //   flag, entry, leftChecked, leftTitle, onLeft(checked),
+  //   valueDisabled, onValue(patch), onRemove? — omit onRemove when the left
+  //   toggle is itself the removal (group membership model).
+  function buildManagedFlagRow(opts) {
+    var flag = opts.flag;
+    var row = document.createElement("div");
+    row.className = "flag-row" + (opts.leftChecked ? " overriding" : "");
+
+    var left = document.createElement("input");
+    left.type = "checkbox";
+    left.className = "toggle ov-toggle";
+    left.checked = opts.leftChecked;
+    left.title = opts.leftTitle || "";
+    left.addEventListener("change", function () { opts.onLeft(left.checked); });
+    row.appendChild(left);
+
+    var lbl = document.createElement("div");
+    lbl.className = "flag-label";
+    var nameEl = document.createElement("span");
+    nameEl.className = "fname";
+    nameEl.textContent = (flag.name && flag.name !== flag.key) ? flag.name : flag.key;
+    lbl.appendChild(nameEl);
+    if (flag.name && flag.name !== flag.key) {
+      var keyEl = document.createElement("span");
+      keyEl.className = "fkey";
+      keyEl.textContent = flag.key;
+      lbl.appendChild(keyEl);
+    }
+    row.appendChild(lbl);
+
+    var ctrls = document.createElement("div");
+    ctrls.className = "flag-controls";
+    ctrls.appendChild(buildValueControl(flag, opts.entry, opts.valueDisabled, opts.onValue));
+    if (opts.onRemove) {
+      var x = document.createElement("button");
+      x.className = "row-x";
+      x.textContent = "×";
+      x.title = "Remove";
+      x.addEventListener("click", opts.onRemove);
+      ctrls.appendChild(x);
+    }
+    row.appendChild(ctrls);
+    return row;
   }
 
   function renderFlags() {
@@ -527,51 +610,45 @@
       head.appendChild(enable); head.appendChild(nameInput); head.appendChild(del);
       card.appendChild(head);
 
-      var chips = document.createElement("div");
-      chips.className = "chiprow";
+      var list = document.createElement("div");
+      list.className = "rowlist";
       var keys = Object.keys(group.flags || {});
       if (!keys.length) {
         var none = document.createElement("span");
         none.className = "sub";
         none.textContent = "No flags in this group.";
-        chips.appendChild(none);
+        list.appendChild(none);
       }
-      keys.forEach(function (k) { chips.appendChild(buildGroupFlagChip(group, k)); });
-      card.appendChild(chips);
+      keys.forEach(function (k) { list.appendChild(buildGroupFlagRow(group, k)); });
+      card.appendChild(list);
       card.appendChild(buildAddFlagRow(group));
       els.groups.appendChild(card);
     });
   }
 
-  function buildGroupFlagChip(group, key) {
+  function buildGroupFlagRow(group, key) {
     var flag  = flagByKey(key) || { key: key, kind: "boolean" };
     var entry = group.flags[key] || { value: defaultValueFor(flag) };
-
-    var chip  = document.createElement("span");
-    chip.className = "chip";
-
-    var label = document.createElement("span");
-    label.textContent = (flag.name && flag.name !== key ? flag.name : key) + ":";
-    chip.appendChild(label);
-
-    var ctrl = buildValueControl(flag, entry, false, function (patch) {
-      var e = group.flags[key] || {};
-      e.value = patch.value;
-      if (typeof patch.variation === "number") e.variation = patch.variation;
-      group.flags[key] = e;
-      saveState().then(renderGroups);
+    // Group flags have no per-flag enabled state (the group's own toggle gates
+    // them), so the left toggle is membership: every shown row is a member, and
+    // turning it off removes the flag from the group.
+    return buildManagedFlagRow({
+      flag: flag,
+      entry: entry,
+      leftChecked: true,
+      leftTitle: "In this group — click to remove",
+      onLeft: function (checked) {
+        if (!checked) { delete group.flags[key]; saveState().then(renderGroups); }
+      },
+      valueDisabled: false,
+      onValue: function (patch) {
+        var e = group.flags[key] || {};
+        e.value = patch.value;
+        if (typeof patch.variation === "number") e.variation = patch.variation;
+        group.flags[key] = e;
+        saveState();
+      },
     });
-    ctrl.classList.add("cval");
-    chip.appendChild(ctrl);
-
-    var x = document.createElement("span");
-    x.className = "x"; x.textContent = "×"; x.title = "Remove from group";
-    x.addEventListener("click", function () {
-      delete group.flags[key];
-      saveState().then(renderGroups);
-    });
-    chip.appendChild(x);
-    return chip;
   }
 
   function buildSearchCombobox(avail, placeholder, onAdd) {
@@ -737,57 +814,49 @@
         card.appendChild(gt);
       }
 
-      var chips = document.createElement("div");
-      chips.className = "chiprow";
+      var list = document.createElement("div");
+      list.className = "rowlist";
       var ovLabel = document.createElement("div");
       ovLabel.className = "sub"; ovLabel.textContent = "Domain-specific overrides:";
-      chips.appendChild(ovLabel);
+      list.appendChild(ovLabel);
       Object.keys(domain.overrides).forEach(function (k) {
-        chips.appendChild(buildDomainOverrideChip(domain, k));
+        list.appendChild(buildDomainOverrideRow(domain, k));
       });
-      card.appendChild(chips);
+      card.appendChild(list);
       card.appendChild(buildAddDomainOverrideRow(domain));
       els.domains.appendChild(card);
     });
   }
 
-  function buildDomainOverrideChip(domain, key) {
-    var flag  = flagByKey(key) || { key: key, kind: "boolean" };
-    var entry = domain.overrides[key] || { value: defaultValueFor(flag) };
-
-    var chip = document.createElement("span");
-    chip.className = "chip";
-
-    var en = document.createElement("input");
-    en.type = "checkbox"; en.checked = entry.enabled === true; en.title = "Enabled";
-    en.addEventListener("change", function () {
-      domain.overrides[key].enabled = en.checked;
-      saveState().then(renderDomains);
+  function buildDomainOverrideRow(domain, key) {
+    var flag    = flagByKey(key) || { key: key, kind: "boolean" };
+    var entry   = domain.overrides[key] || { value: defaultValueFor(flag) };
+    var enabled = entry.enabled === true;
+    // Domain overrides keep a per-flag pause state: the left toggle pauses /
+    // resumes (value preserved, greyed while paused); × removes entirely.
+    return buildManagedFlagRow({
+      flag: flag,
+      entry: entry,
+      leftChecked: enabled,
+      leftTitle: enabled ? "Active on this domain — click to pause"
+                         : "Paused — click to activate",
+      onLeft: function (checked) {
+        domain.overrides[key].enabled = checked;
+        saveState().then(renderDomains);
+      },
+      valueDisabled: !enabled,
+      onValue: function (patch) {
+        var e = domain.overrides[key] || { enabled: true };
+        e.value = patch.value;
+        if (typeof patch.variation === "number") e.variation = patch.variation;
+        domain.overrides[key] = e;
+        saveState();
+      },
+      onRemove: function () {
+        delete domain.overrides[key];
+        saveState().then(renderDomains);
+      },
     });
-    chip.appendChild(en);
-
-    var label = document.createElement("span");
-    label.textContent = (flag.name && flag.name !== key ? flag.name : key) + ":";
-    chip.appendChild(label);
-
-    var ctrl = buildValueControl(flag, entry, !en.checked, function (patch) {
-      var e = domain.overrides[key] || { enabled: true };
-      e.value = patch.value;
-      if (typeof patch.variation === "number") e.variation = patch.variation;
-      domain.overrides[key] = e;
-      saveState().then(renderDomains);
-    });
-    ctrl.classList.add("cval");
-    chip.appendChild(ctrl);
-
-    var x = document.createElement("span");
-    x.className = "x"; x.textContent = "×"; x.title = "Remove";
-    x.addEventListener("click", function () {
-      delete domain.overrides[key];
-      saveState().then(renderDomains);
-    });
-    chip.appendChild(x);
-    return chip;
   }
 
   function buildAddDomainOverrideRow(domain) {
