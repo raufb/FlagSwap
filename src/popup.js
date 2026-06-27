@@ -212,6 +212,7 @@
     row.className = "flag-row" +
       (hasOverride ? " overriding" : "") +
       (serverSide  ? " ss" : "");
+    row.dataset.flagKey = flag.key;
 
     // Effective default with no override, in priority order:
     //   flag.value — LD's served variation value from sync (fallthrough when on,
@@ -242,7 +243,13 @@
         } else {
           delete rich.globalOverrides[flag.key];
         }
-        saveState().then(renderAll);
+        // Free-value flags seed to the current default (no "opposite"), so focus
+        // the input after re-render to prompt the user for the actual value.
+        var focusFree = ovToggle.checked && !isBool && !isMulti;
+        saveState().then(function () {
+          renderAll();
+          if (focusFree) focusOverrideInput(flag.key);
+        });
       });
     }
 
@@ -292,10 +299,13 @@
   }
 
   // Build the override entry for a newly-enabled override.
-  // Booleans seed at the OPPOSITE of the current default (baseVal): the reason
-  // you enable an override is almost always to force the non-default value, so
-  // one click does it. Multivariate/string have no "opposite" — they seed at
-  // the current default and you pick the value with the right-side control.
+  // Enabling the toggle should always DO something visible on one click:
+  //   boolean      -> the OPPOSITE of the current default (baseVal).
+  //   multivariate -> the NEXT variation after the current default (wraps), so a
+  //                   2-variation flag flips and you can refine via the dropdown.
+  //   free value   -> the current default (no meaningful "opposite"); the row
+  //                   then focuses the value input so the user types the value.
+  // A prior override's value (existing.value) is always preserved over seeding.
   function seedOverride(flag, existingOv, baseVal, isBool, isMulti) {
     var existing = existingOv || {};
     if (isBool) {
@@ -303,8 +313,17 @@
       return { value: bv, enabled: true, _kind: "boolean", variation: boolVariation(bv) };
     }
     if (isMulti) {
-      var seed = existing.value !== undefined ? existing.value : baseVal;
-      var vi = variationIndexFor(flag, seed);
+      var vi;
+      if (existing.value !== undefined) {
+        vi = variationIndexFor(flag, existing.value);   // resume a prior override
+      } else {
+        // Seed to a DIFFERENT variation than the current default so one click
+        // visibly changes the flag (boolean's "opposite", generalized).
+        var defIdx = variationIndexFor(flag, baseVal);
+        vi = flag.variations.length > 1
+           ? (defIdx + 1) % flag.variations.length
+           : defIdx;
+      }
       return { value: flag.variations[vi].value, enabled: true, variation: vi };
     }
     var entry = {
@@ -468,6 +487,20 @@
     }
     row.appendChild(ctrls);
     return row;
+  }
+
+  // After a re-render, focus + select a flag row's value input so the user can
+  // immediately type the override value (free-value flags seed to the default).
+  function focusOverrideInput(key) {
+    if (!els.flags) return;
+    var rows = els.flags.querySelectorAll(".flag-row");
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].dataset.flagKey === key) {
+        var inp = rows[i].querySelector(".ov-input");
+        if (inp) { inp.focus(); inp.select(); }
+        return;
+      }
+    }
   }
 
   function renderFlags() {
