@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FlagSwap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Override LaunchDarkly client-side feature flags in the browser.",
   "permissions": ["storage"],
   "host_permissions": ["https://app.launchdarkly.com/*"],
