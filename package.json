@@ -5,6 +5,7 @@
   "description": "MV3 browser extension that overrides LaunchDarkly client-side feature flags (PoC).",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package": "npm run build && node scripts/package.mjs",
     "test": "node --test test/core.test.js test/ldapi.test.js test/state.test.js",
     "e2e": "npm run build && xvfb-run -a node --test test/e2e.spec.mjs",
     "e2e:tier2": "npm run build && xvfb-run -a node --test test/e2e-tier2.spec.mjs",
