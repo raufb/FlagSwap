@@ -311,6 +311,11 @@ input[type="checkbox"].toggle:disabled {
 }
 .card-head input[type="text"] {
   flex: 1;
+  min-width: 0;
+}
+.card-head select {
+  flex: 0 0 auto;
+  width: auto;
 }
 .card-title {
   flex: 1;
