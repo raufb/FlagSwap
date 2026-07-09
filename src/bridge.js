@@ -40,16 +40,61 @@
     }
   }
 
-  // Collapse raw storage -> flat override map for this hostname.
-  function resolveFlat(rawStorage) {
+  // How long to wait for the background to report our cookieStoreId before
+  // giving up and resolving without the container layer. Kept well under
+  // inject.js's 3s gate backstop so a slow/asleep background never delays the
+  // page's first flag read by more than this.
+  var WHOAMI_TIMEOUT_MS = 800;
+
+  // A content script cannot read its own contextual identity; only the
+  // background sees it (as sender.tab.cookieStoreId). Ask for it, with a hard
+  // timeout + lastError guard so the readiness gate is NEVER blocked on failure.
+  function fetchCookieStoreId(cb) {
+    var done = false;
+    var timer = null;
+    function finish(v) {
+      if (done) return;
+      done = true;
+      if (timer) { try { clearTimeout(timer); } catch (e) {} }
+      cb(v || null);
+    }
+    try { timer = setTimeout(function () { finish(null); }, WHOAMI_TIMEOUT_MS); } catch (e) {}
+    try {
+      chrome.runtime.sendMessage({ type: "flagswap:whoami" }, function (resp) {
+        // Reading lastError suppresses the "Unchecked runtime.lastError" noise
+        // when no receiver is present (e.g. background not yet ready).
+        var err = chrome.runtime && chrome.runtime.lastError;
+        if (err) return finish(null);
+        finish(resp && resp.cookieStoreId);
+      });
+    } catch (e) {
+      finish(null);
+    }
+  }
+
+  // Collapse raw storage -> flat override map for this hostname, then push it to
+  // the MAIN world. The container layer needs this tab's cookieStoreId, which
+  // costs a background round-trip — so we ONLY pay it when container profiles
+  // actually exist. Everyone else resolves synchronously exactly as before.
+  function resolveAndPush(rawStorage) {
+    var raw = rawStorage || {};
     if (!State) {
       // Defensive: if state.js failed to load, fall back to legacy flat map so
       // the extension still works (and the readiness gate still releases).
-      var legacy = rawStorage && rawStorage[LEGACY_KEY];
-      return legacy && typeof legacy === "object" ? legacy : {};
+      var legacy = raw[LEGACY_KEY];
+      push(legacy && typeof legacy === "object" ? legacy : {});
+      return;
     }
-    var state = State.migrate(rawStorage);
-    return State.resolveEffective(state, hostname());
+    var state = State.migrate(raw);
+    var host = hostname();
+    var containers = state && state.containers;
+    if (!containers || !containers.length) {
+      push(State.resolveEffective(state, host, null));
+      return;
+    }
+    fetchCookieStoreId(function (csid) {
+      push(State.resolveEffective(state, host, csid));
+    });
   }
 
   function push(overrides) {
@@ -77,7 +122,7 @@
   // Initial read — always push, even if empty, to release the readiness gate.
   try {
     chrome.storage.local.get([STATE_KEY, LEGACY_KEY], function (res) {
-      push(resolveFlat(res || {}));
+      resolveAndPush(res || {});
     });
   } catch (e) {
     // If storage is unavailable for any reason, still release the gate.
@@ -130,7 +175,7 @@
       // Re-read both keys (a change event only carries the changed key) so the
       // resolver always sees the full current picture.
       chrome.storage.local.get([STATE_KEY, LEGACY_KEY], function (res) {
-        push(resolveFlat(res || {}));
+        resolveAndPush(res || {});
       });
     });
   } catch (e) {}

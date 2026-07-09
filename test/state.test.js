@@ -15,12 +15,14 @@ test("migrate: empty storage -> empty state", () => {
     globalOverrides: {},
     groups: [],
     domains: [],
+    containers: [],
   });
   assert.deepStrictEqual(S.migrate(undefined), {
     version: 1,
     globalOverrides: {},
     groups: [],
     domains: [],
+    containers: [],
   });
 });
 
@@ -31,6 +33,7 @@ test("migrate: legacy flagswap:overrides wrapped as globalOverrides", () => {
   assert.deepStrictEqual(out.globalOverrides, legacy);
   assert.deepStrictEqual(out.groups, []);
   assert.deepStrictEqual(out.domains, []);
+  assert.deepStrictEqual(out.containers, []);
 });
 
 test("migrate: new flagswap:state passes through, fills missing arrays/objects", () => {
@@ -39,6 +42,7 @@ test("migrate: new flagswap:state passes through, fills missing arrays/objects",
     globalOverrides: { x: { value: 1, enabled: true } },
     groups: [{ id: "g1", enabled: true, flags: {} }],
     domains: [{ enabled: true, matchType: "exact", pattern: "a.com" }],
+    containers: [{ enabled: true, cookieStoreId: "firefox-container-1" }],
   };
   assert.deepStrictEqual(S.migrate({ "flagswap:state": state }), state);
 
@@ -49,6 +53,7 @@ test("migrate: new flagswap:state passes through, fills missing arrays/objects",
     globalOverrides: {},
     groups: [],
     domains: [],
+    containers: [],
   });
 });
 
@@ -372,5 +377,183 @@ test("resolveEffective: defensive on malformed state", () => {
   assert.deepStrictEqual(
     S.resolveEffective({ groups: "nope", domains: 5, globalOverrides: 7 }, "x.com"),
     {}
+  );
+});
+
+// ---- container scope (Firefox contextual identities) --------------------
+
+test("resolveEffective: no cookieStoreId -> container layer skipped (back-compat)", () => {
+  const state = {
+    version: 1,
+    groups: [],
+    globalOverrides: { a: { value: "global", enabled: true } },
+    domains: [],
+    containers: [
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-1",
+        mode: "merge",
+        overrides: { a: { value: "container", enabled: true } },
+      },
+    ],
+  };
+  // 2-arg call (as domain-only callers use) never sees the container layer
+  assert.strictEqual(S.resolveEffective(state, "x.com").a.value, "global");
+  // empty cookieStoreId is likewise ignored
+  assert.strictEqual(S.resolveEffective(state, "x.com", "").a.value, "global");
+});
+
+test("resolveEffective: merge container beats global + domain, only for its cookieStoreId", () => {
+  const state = {
+    version: 1,
+    groups: [],
+    globalOverrides: { a: { value: "global", enabled: true } },
+    domains: [
+      {
+        enabled: true,
+        matchType: "exact",
+        pattern: "x.com",
+        overrides: { a: { value: "domain", enabled: true } },
+      },
+    ],
+    containers: [
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-3",
+        mode: "merge",
+        overrides: { a: { value: "container", enabled: true } },
+      },
+    ],
+  };
+  // matching container -> wins over domain (highest precedence)
+  assert.strictEqual(
+    S.resolveEffective(state, "x.com", "firefox-container-3").a.value,
+    "container"
+  );
+  // a DIFFERENT container -> no container layer -> domain wins
+  assert.strictEqual(
+    S.resolveEffective(state, "x.com", "firefox-container-9").a.value,
+    "domain"
+  );
+});
+
+test("resolveEffective: two containers, same host, opposite values (the core use case)", () => {
+  const state = {
+    version: 1,
+    groups: [],
+    globalOverrides: {},
+    domains: [],
+    containers: [
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-1",
+        mode: "merge",
+        overrides: { feature: { value: true, enabled: true } },
+      },
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-2",
+        mode: "merge",
+        overrides: { feature: { value: false, enabled: true } },
+      },
+    ],
+  };
+  assert.strictEqual(
+    S.resolveEffective(state, "app.example.com", "firefox-container-1").feature.value,
+    true
+  );
+  assert.strictEqual(
+    S.resolveEffective(state, "app.example.com", "firefox-container-2").feature.value,
+    false
+  );
+});
+
+test("resolveEffective: solo container isolates — lower layers dropped", () => {
+  const state = {
+    version: 1,
+    groups: [],
+    globalOverrides: {
+      a: { value: "globalA", enabled: true },
+      b: { value: "globalB", enabled: true },
+    },
+    domains: [],
+    containers: [
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-1",
+        mode: "solo",
+        overrides: { a: { value: "soloA", enabled: true } },
+      },
+    ],
+  };
+  const out = S.resolveEffective(state, "x.com", "firefox-container-1");
+  // only the container's own flag survives; global 'b' is dropped (isolation)
+  assert.deepStrictEqual(out, { a: { value: "soloA", enabled: true } });
+});
+
+test("resolveEffective: disabled container does not contribute", () => {
+  const state = {
+    version: 1,
+    groups: [],
+    globalOverrides: { a: { value: "global", enabled: true } },
+    domains: [],
+    containers: [
+      {
+        enabled: false,
+        cookieStoreId: "firefox-container-1",
+        mode: "merge",
+        overrides: { a: { value: "container", enabled: true } },
+      },
+    ],
+  };
+  assert.strictEqual(
+    S.resolveEffective(state, "x.com", "firefox-container-1").a.value,
+    "global"
+  );
+});
+
+test("resolveEffective: container activates a group via groupIds", () => {
+  const state = {
+    version: 1,
+    groups: [{ id: "g1", enabled: false, flags: { a: { value: "fromGroup" } } }],
+    globalOverrides: {},
+    domains: [],
+    containers: [
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-1",
+        mode: "merge",
+        groupIds: ["g1"],
+        overrides: {},
+      },
+    ],
+  };
+  // globally-off group activates only inside the container
+  assert.deepStrictEqual(S.resolveEffective(state, "x.com"), {});
+  assert.strictEqual(
+    S.resolveEffective(state, "x.com", "firefox-container-1").a.value,
+    "fromGroup"
+  );
+});
+
+test("resolveEffective: container individual override beats its own group", () => {
+  const state = {
+    version: 1,
+    groups: [{ id: "g1", enabled: true, flags: { a: { value: "group" } } }],
+    globalOverrides: {},
+    domains: [],
+    containers: [
+      {
+        enabled: true,
+        cookieStoreId: "firefox-container-1",
+        mode: "merge",
+        groupIds: ["g1"],
+        overrides: { a: { value: "containerIndividual", enabled: true } },
+      },
+    ],
+  };
+  assert.strictEqual(
+    S.resolveEffective(state, "x.com", "firefox-container-1").a.value,
+    "containerIndividual"
   );
 });

@@ -19,6 +19,25 @@ body {
   margin: 0;
   padding: 12px;
   width: 380px;
+  /* Flex column with a DEFINITE height so the inner lists can flex-grow and
+     scroll internally (only the flag lists), keeping the header, toolbar and
+     pinned overrides in place. The height must be definite — not just a
+     max-height — or `flex: 1 1 0` children collapse to 0, because the popup's
+     body height is otherwise content-driven and therefore indefinite.
+     Must be a fixed length, NOT vh: a browser-action popup has no real viewport
+     (it sizes to content), so vh resolves to ~0 and would crush the popup.
+     560px sits just under Firefox's ~600px popup ceiling. The docked sidebar,
+     which DOES have a viewport, overrides this with 100vh below. */
+  display: flex;
+  flex-direction: column;
+  height: 560px;
+}
+h1,
+.sub,
+.safety,
+.tabs,
+footer {
+  flex: none;
 }
 
 /* Side panel (Chrome) / sidebar (Firefox): fill the docked pane, which the
@@ -26,6 +45,8 @@ body {
 body.ctx-panel {
   width: auto;
   min-width: 280px;
+  height: 100vh;
+  max-height: none;
 }
 
 h1 {
@@ -98,6 +119,57 @@ h2 {
 }
 .panel.active {
   display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Default (Groups/Domains): scroll the whole panel if it outgrows the pane. */
+  overflow-y: auto;
+}
+/* Flags panel manages its own inner scroll (only the non-overridden list),
+   so it stays a non-scrolling flex column and pins everything else. */
+#panel-flags.active {
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+#panel-flags .toolbar,
+#panel-flags #override-summary,
+#panel-flags #manual-add {
+  flex: none;
+}
+/* The two flag lists share one flex-column area. It fills the space left below
+   the toolbar/summary and above the add-flag section, and is DEFINITE (its
+   parent panel resolves a definite height from the body), so the 50% cap and
+   the children's flex-grow both have something to resolve against. */
+#flags-lists {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Pinned overrides: as tall as their content, but never past HALF the list
+   area, with their own scrollbar. When the list is short they take only what
+   they need and hand the rest to #flags; when long they cap at 50% — matching
+   #flags, which fills the other 50% — so a big override list ends up the same
+   height as the non-overridden list. 50% resolves because #flags-lists is
+   definite (works identically in popup and sidebar). */
+#flags-pinned {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  overflow-y: auto;
+}
+/* Non-overridden list: takes all remaining space (absorbing slack when the
+   pinned list is short) and scrolls when it overflows. */
+#flags {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Divider between the pinned overrides and the scrolling list. */
+#flags-pinned:not(:empty) {
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 6px;
+  padding-bottom: 2px;
 }
 
 /* ---- general controls ---- */
@@ -321,6 +393,38 @@ input[type="checkbox"].toggle:disabled {
   flex: 1;
   font-weight: 600;
 }
+/* Container profile card: name (with color dot) fills the row like card-title */
+.cname {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cdot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.chere {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent, #2563eb);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 4px;
+  line-height: 15px;
+}
 /* List of per-flag override rows inside a group/domain card (Flags-tab layout) */
 .rowlist {
   margin: 6px 0 0;
@@ -420,6 +524,25 @@ input[type="checkbox"].toggle:disabled {
   flex: 1;
   min-width: 0;
 }
+/* Provenance dot: floats to the left of the name/key (which are BFC blocks and
+   sit beside it). S = synced, D = discovered, M = manual. */
+.src-dot {
+  float: left;
+  margin: 1px 6px 0 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+  cursor: default;
+  user-select: none;
+}
+.src-dot.src-synced     { background: #2e7d32; }
+.src-dot.src-discovered { background: #1565c0; }
+.src-dot.src-manual     { background: #b26a00; }
 .flag-label .fname {
   display: block;
   white-space: nowrap;

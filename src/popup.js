@@ -19,14 +19,31 @@
   var K_TOKEN = "flagswap:ldToken";
   var K_SEL   = "flagswap:ldSelection";
   var K_DISC  = "flagswap:discoveredFlags";
+  var K_SRC   = "flagswap:flagSources";  // which flag sources feed override targets
+  var K_SYNC  = "flagswap:syncState";    // shared sync-in-progress signal from Settings
   function cacheKey(proj, env) { return "flagswap:flagCache:" + proj + ":" + env; }
 
   // ---- in-memory state ----------------------------------------------------
-  var rich = { version: 1, globalOverrides: {}, groups: [], domains: [] };
+  var rich = { version: 1, globalOverrides: {}, groups: [], domains: [], containers: [] };
+
+  // Firefox contextual-identity metadata, cookieStoreId -> {name, color}. Loaded
+  // once from browser.contextualIdentities (plus the two built-in stores). The
+  // active tab's own cookieStoreId powers the "you are here" hint.
+  var containerIdentities = {};
+  var currentCookieStoreId = null;
+  var BUILTIN_STORES = [
+    { cookieStoreId: "firefox-default", name: "No container (default)", color: "" },
+    { cookieStoreId: "firefox-private", name: "Private browsing", color: "" },
+  ];
   var flags = null;         // synced flag list (null = no sync yet)
   var flagsCacheVer = 0;    // schema ver of the loaded flag cache (2 = has served values)
   var flagFilter = "";
   var discoveredFlags = {}; // {[key]: {kind, value?}} from intercepted LD eval responses
+  // Which sources may contribute override targets. Synced is always on; the
+  // other two are additive opt-ins (default on = permissive). "Synced only" =
+  // both false. Set in Settings.
+  var flagSources = { discovered: true, manual: true };
+  var syncState = {};       // {status:"syncing"|"idle"|"error", proj, env} from Settings
   var showServerSide = false;
   var sortField = "name";
   var sortAsc = true;
@@ -50,7 +67,9 @@
     countFlags: $("count-flags"), countGroups: $("count-groups"), countDomains: $("count-domains"),
     flagSearch: $("flag-search"),
     overrideSummary: $("override-summary"),
+    flagsPinned: $("flags-pinned"),
     flags: $("flags"),
+    manualAdd: $("manual-add"),
     manualKey: $("manual-key"),
     manualAddBtn: $("manual-add-btn"),
     manualStatus: $("manual-status"),
@@ -59,6 +78,9 @@
     groupName: $("group-name"), groupAdd: $("group-add"), groups: $("groups"),
     domainPattern: $("domain-pattern"), domainMatchType: $("domain-matchtype"),
     domainAdd: $("domain-add"), domains: $("domains"),
+    countContainers: $("count-containers"), containerCurrent: $("container-current"),
+    containerPicker: $("container-picker"), containerAdd: $("container-add"),
+    containers: $("containers"),
     clear: $("clear"), cacheInfo: $("cache-info"),
     flagSort: $("flag-sort"), flagSortDir: $("flag-sort-dir"),
     showServerSide: $("show-server-side"),
@@ -83,8 +105,67 @@
 
   // ---- flag metadata helpers ---------------------------------------------
   function activeFlags() { return flags || []; }
+
+  // Flags that can be used as override targets: the synced LD catalog PLUS, when
+  // enabled in Settings, keys from manual adds (rich.globalOverrides) and page
+  // interception (discoveredFlags). This lets groups/domains reference flags
+  // before (or without) a sync — activeFlags() alone is empty until sync lands.
+  function overridableFlags() {
+    var out = activeFlags().slice();
+    var seen = {};
+    out.forEach(function (f) { seen[f.key] = true; });
+    function add(key, kind) {
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push({ key: key, kind: kind || "boolean", clientSideAvailable: true, manual: true });
+    }
+    if (flagSources.manual) {
+      Object.keys(rich.globalOverrides).forEach(function (k) {
+        var ov = rich.globalOverrides[k];
+        add(k, (ov && ov._kind) || (discoveredFlags[k] && discoveredFlags[k].kind));
+      });
+    }
+    if (flagSources.discovered) {
+      Object.keys(discoveredFlags).forEach(function (k) { add(k, discoveredFlags[k].kind); });
+    }
+    return out;
+  }
+
   function flagByKey(key) {
-    return activeFlags().find(function (f) { return f.key === key; });
+    return overridableFlags().find(function (f) { return f.key === key; });
+  }
+
+  // Provenance of a flag key, for the row indicator dot. Synced wins (it's the
+  // authoritative, fully-typed source), then discovered, else manual.
+  function flagSource(key) {
+    if (activeFlags().some(function (f) { return f.key === key; })) return "synced";
+    if (discoveredFlags[key]) return "discovered";
+    return "manual";
+  }
+
+  var SOURCE_META = {
+    synced:     { label: "S", title: "Synced from LaunchDarkly" },
+    discovered: { label: "D", title: "Discovered via page interception — not in the synced catalog. Re-sync for full variation control." },
+    manual:     { label: "M", title: "Manually added key — type may be incomplete. Re-sync for full control." },
+  };
+
+  // Append a small provenance dot to a flag-label element.
+  function appendSourceDot(lbl, key) {
+    var src = flagSource(key);
+    var meta = SOURCE_META[src];
+    var dot = document.createElement("span");
+    dot.className = "src-dot src-" + src;
+    dot.textContent = meta.label;
+    dot.title = meta.title;
+    lbl.insertBefore(dot, lbl.firstChild);
+  }
+
+  // Is a sync actively running? Bounded by a freshness window so a Settings page
+  // that was closed mid-sync (leaving status stuck at "syncing") can't wedge the
+  // popup into a permanent "Sync in progress…" state.
+  function isSyncing() {
+    return !!syncState && syncState.status === "syncing" &&
+           typeof syncState.ts === "number" && (Date.now() - syncState.ts) < 60000;
   }
   function isMultivariate(flag) {
     return !!(flag && flag.kind === "multivariate" && flag.variations && flag.variations.length);
@@ -130,6 +211,8 @@
         note += " Force-refresh in Settings for accurate default states.";
       }
       els.sourceNote.textContent = note;
+    } else if (isSyncing()) {
+      els.sourceNote.textContent = "Sync in progress…";
     } else {
       els.sourceNote.textContent = flags
         ? "0 flags synced — check Settings to re-sync."
@@ -171,25 +254,27 @@
     return out;
   }
 
+  function isOverridden(flag) {
+    return !!(rich.globalOverrides[flag.key] && rich.globalOverrides[flag.key].enabled);
+  }
+
   function sortFlags(list) {
     return list.slice().sort(function (a, b) {
+      // Overridden flags always sort to the top, independent of the chosen
+      // sort field and direction. The selected sort then orders flags within
+      // the overridden and non-overridden partitions separately.
+      var oa = isOverridden(a), ob = isOverridden(b);
+      if (oa !== ob) return oa ? -1 : 1;
+
       var cmp = 0;
       if (sortField === "name") {
         var na = (a.name || a.key).toLowerCase();
         var nb = (b.name || b.key).toLowerCase();
         cmp = na < nb ? -1 : na > nb ? 1 : 0;
-      } else if (sortField === "override") {
-        var oa = !!(rich.globalOverrides[a.key] && rich.globalOverrides[a.key].enabled);
-        var ob = !!(rich.globalOverrides[b.key] && rich.globalOverrides[b.key].enabled);
-        cmp = (ob ? 1 : 0) - (oa ? 1 : 0);
       } else if (sortField === "status") {
         var ra = a.on === true ? 0 : a.on === false ? 1 : 2;
         var rb = b.on === true ? 0 : b.on === false ? 1 : 2;
         cmp = ra - rb;
-      } else if (sortField === "side") {
-        var sa = a.clientSideAvailable === false ? 1 : 0;
-        var sb = b.clientSideAvailable === false ? 1 : 0;
-        cmp = sa - sb;
       }
       return sortAsc ? cmp : -cmp;
     });
@@ -266,6 +351,7 @@
       keyEl.textContent = flag.key;
       lbl.appendChild(keyEl);
     }
+    appendSourceDot(lbl, flag.key);
 
     // Right side: value control while overriding, else the default badge.
     var ctrls = document.createElement("div");
@@ -472,6 +558,7 @@
       keyEl.textContent = flag.key;
       lbl.appendChild(keyEl);
     }
+    appendSourceDot(lbl, flag.key);
     row.appendChild(lbl);
 
     var ctrls = document.createElement("div");
@@ -493,7 +580,7 @@
   // immediately type the override value (free-value flags seed to the default).
   function focusOverrideInput(key) {
     if (!els.flags) return;
-    var rows = els.flags.querySelectorAll(".flag-row");
+    var rows = document.querySelectorAll("#flags-pinned .flag-row, #flags .flag-row");
     for (var i = 0; i < rows.length; i++) {
       if (rows[i].dataset.flagKey === key) {
         var inp = rows[i].querySelector(".ov-input");
@@ -504,6 +591,10 @@
   }
 
   function renderFlags() {
+    // Manual adds are a source the user can disable in Settings; hide the box
+    // when off so the Flags tab matches the configured policy.
+    if (els.manualAdd) els.manualAdd.style.display = flagSources.manual ? "" : "none";
+    els.flagsPinned.innerHTML = "";
     els.flags.innerHTML = "";
     var list     = displayedFlags();
     var q        = flagFilter.trim().toLowerCase();
@@ -522,8 +613,11 @@
       return;
     }
 
+    // Overridden flags are pinned in their own container above the scroll
+    // region; the rest go into #flags, which is the only part that scrolls.
     shown.forEach(function (flag) {
-      els.flags.appendChild(buildFlagRow(flag));
+      var target = isOverridden(flag) ? els.flagsPinned : els.flags;
+      target.appendChild(buildFlagRow(flag));
     });
   }
 
@@ -690,7 +784,12 @@
     if (!avail.length) {
       var none = document.createElement("span");
       none.className = "sub";
-      none.textContent = "(all flags added)";
+      // Distinguish "sync running" / "no flags known yet" / "all added" —
+      // otherwise a freshly-created group/domain reads as if nothing can be added.
+      none.textContent =
+        overridableFlags().length ? "(all flags added)" :
+        isSyncing()               ? "Sync in progress…" :
+        "No flags yet — sync in Settings or add one on the Flags tab.";
       row.appendChild(none);
       return row;
     }
@@ -738,7 +837,7 @@
   }
 
   function buildAddFlagRow(group) {
-    var avail = activeFlags().filter(function (f) {
+    var avail = overridableFlags().filter(function (f) {
       return f.clientSideAvailable !== false && !(group.flags && group.flags[f.key]);
     });
     return buildSearchCombobox(avail, "Add flag…", function (key) {
@@ -893,7 +992,7 @@
   }
 
   function buildAddDomainOverrideRow(domain) {
-    var avail = activeFlags().filter(function (f) {
+    var avail = overridableFlags().filter(function (f) {
       return f.clientSideAvailable !== false && !domain.overrides[f.key];
     });
     return buildSearchCombobox(avail, "Add override…", function (key) {
@@ -906,6 +1005,263 @@
   }
 
   // =========================================================================
+  // Containers (Firefox contextual identities)
+  // =========================================================================
+
+  // The contextualIdentities API (Firefox-only). Guarded so the Chrome build /
+  // an unsupported Firefox degrades gracefully to just the built-in stores.
+  function containersApi() {
+    return (typeof browser !== "undefined" && browser.contextualIdentities) ||
+           (typeof chrome !== "undefined" && chrome.contextualIdentities) || null;
+  }
+
+  // Populate containerIdentities: the two built-in stores plus every user
+  // container. Never rejects — an unavailable API just yields the built-ins.
+  function loadContainerIdentities() {
+    containerIdentities = {};
+    var api = containersApi();
+    // Only surface the built-in stores where the API exists (Firefox); on Chrome
+    // the containers feature is inert, so we show an empty "requires Firefox"
+    // state rather than dangling firefox-* options.
+    if (!api || !api.query) return Promise.resolve();
+    BUILTIN_STORES.forEach(function (b) {
+      containerIdentities[b.cookieStoreId] = { name: b.name, color: b.color };
+    });
+    return new Promise(function (resolve) {
+      var p;
+      try { p = api.query({}); } catch (e) { return resolve(); }
+      if (!p || !p.then) return resolve();
+      p.then(function (list) {
+        (list || []).forEach(function (c) {
+          containerIdentities[c.cookieStoreId] = {
+            name: c.name || c.cookieStoreId,
+            color: c.colorCode || "",
+          };
+        });
+        resolve();
+      }, function () { resolve(); });
+    });
+  }
+
+  // The active tab's own cookieStoreId, for the "current tab is in X" hint.
+  function loadCurrentCookieStoreId() {
+    return new Promise(function (resolve) {
+      try {
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+          var t = tabs && tabs[0];
+          currentCookieStoreId = (t && t.cookieStoreId) || null;
+          resolve();
+        });
+      } catch (e) { currentCookieStoreId = null; resolve(); }
+    });
+  }
+
+  function containerMeta(cookieStoreId) {
+    return containerIdentities[cookieStoreId] || { name: cookieStoreId, color: "" };
+  }
+
+  // A small colored dot (container color) prefixed to the container name.
+  function containerDot(color) {
+    var dot = document.createElement("span");
+    dot.className = "cdot";
+    if (color) dot.style.background = color;
+    return dot;
+  }
+
+  // Rebuild the add-a-profile picker from containers that DON'T yet have a
+  // profile. Hides the add-row entirely when every known container is profiled.
+  function refreshContainerPicker() {
+    var sel = els.containerPicker;
+    sel.innerHTML = "";
+    var profiled = {};
+    rich.containers.forEach(function (c) { profiled[c.cookieStoreId] = true; });
+    var avail = Object.keys(containerIdentities).filter(function (id) {
+      return !profiled[id];
+    });
+    avail.forEach(function (id) {
+      var o = document.createElement("option");
+      o.value = id;
+      o.textContent = containerMeta(id).name;
+      sel.appendChild(o);
+    });
+    var none = !avail.length;
+    sel.disabled = none;
+    els.containerAdd.disabled = none;
+    if (none) {
+      var o2 = document.createElement("option");
+      o2.textContent = containersApi() ? "All containers profiled" : "Requires Firefox";
+      sel.appendChild(o2);
+    }
+  }
+
+  function addContainerProfile() {
+    var id = els.containerPicker.value;
+    if (!id) return;
+    if (rich.containers.some(function (c) { return c.cookieStoreId === id; })) return;
+    var meta = containerMeta(id);
+    rich.containers.push({
+      id: uuid(),
+      cookieStoreId: id,
+      name: meta.name,
+      color: meta.color,
+      enabled: true,
+      mode: "merge",
+      groupIds: [],
+      overrides: {},
+    });
+    saveState().then(renderAll);
+  }
+
+  function renderContainers() {
+    // "Current tab" hint.
+    if (currentCookieStoreId) {
+      els.containerCurrent.textContent =
+        "This tab is in: " + containerMeta(currentCookieStoreId).name;
+    } else {
+      els.containerCurrent.textContent = "";
+    }
+
+    refreshContainerPicker();
+
+    els.containers.innerHTML = "";
+    els.countContainers.textContent = String(rich.containers.length);
+    if (!rich.containers.length) {
+      var e = document.createElement("p");
+      e.className = "empty";
+      e.textContent = containersApi()
+        ? "No container profiles. Pick a container above to scope overrides to it."
+        : "Containers require Firefox. No contextual-identity support detected.";
+      els.containers.appendChild(e);
+      return;
+    }
+
+    rich.containers.forEach(function (con) {
+      con.groupIds  = con.groupIds  || [];
+      con.overrides = con.overrides || {};
+      con.mode      = con.mode === "solo" ? "solo" : "merge";
+      var meta = containerMeta(con.cookieStoreId);
+      var isCurrent = con.cookieStoreId === currentCookieStoreId;
+
+      var card = document.createElement("div");
+      card.className = "card" + (con.enabled ? " on" : "");
+
+      var head = document.createElement("div");
+      head.className = "card-head";
+
+      var enable = document.createElement("input");
+      enable.type = "checkbox"; enable.checked = !!con.enabled; enable.title = "Enable this profile";
+      enable.addEventListener("change", function () { con.enabled = enable.checked; saveState().then(renderAll); });
+
+      var name = document.createElement("span");
+      name.className = "cname";
+      name.appendChild(containerDot(meta.color || con.color));
+      name.appendChild(document.createTextNode(meta.name || con.name || con.cookieStoreId));
+      if (isCurrent) {
+        var here = document.createElement("span");
+        here.className = "chere"; here.textContent = "current"; here.title = "The active tab is in this container";
+        name.appendChild(here);
+      }
+
+      var mode = document.createElement("select");
+      mode.title = "merge = layer on top (highest precedence) · solo = isolate (only these flags)";
+      [["merge", "merge"], ["solo", "solo"]].forEach(function (p) {
+        var o = document.createElement("option");
+        o.value = p[0]; o.textContent = p[1]; mode.appendChild(o);
+      });
+      mode.value = con.mode;
+      mode.addEventListener("change", function () { con.mode = mode.value; saveState().then(renderContainers); });
+
+      var del = document.createElement("button");
+      del.className = "danger small"; del.textContent = "Delete";
+      del.addEventListener("click", function () {
+        rich.containers = rich.containers.filter(function (c) { return c.id !== con.id; });
+        saveState().then(renderAll);
+      });
+
+      head.appendChild(enable); head.appendChild(name); head.appendChild(mode); head.appendChild(del);
+      card.appendChild(head);
+
+      if (rich.groups.length) {
+        var gt = document.createElement("div");
+        gt.className = "grouptoggles";
+        var gtLabel = document.createElement("div");
+        gtLabel.className = "sub"; gtLabel.textContent = "Activate groups in this container:";
+        gt.appendChild(gtLabel);
+        rich.groups.forEach(function (g) {
+          var lbl = document.createElement("label");
+          var cb  = document.createElement("input");
+          cb.type = "checkbox"; cb.checked = con.groupIds.indexOf(g.id) >= 0;
+          cb.addEventListener("change", function () {
+            if (cb.checked) {
+              if (con.groupIds.indexOf(g.id) < 0) con.groupIds.push(g.id);
+            } else {
+              con.groupIds = con.groupIds.filter(function (id) { return id !== g.id; });
+            }
+            saveState().then(renderContainers);
+          });
+          lbl.appendChild(cb); lbl.appendChild(document.createTextNode(g.name || "Untitled group"));
+          gt.appendChild(lbl);
+        });
+        card.appendChild(gt);
+      }
+
+      var list = document.createElement("div");
+      list.className = "rowlist";
+      var ovLabel = document.createElement("div");
+      ovLabel.className = "sub"; ovLabel.textContent = "Container-specific overrides:";
+      list.appendChild(ovLabel);
+      Object.keys(con.overrides).forEach(function (k) {
+        list.appendChild(buildContainerOverrideRow(con, k));
+      });
+      card.appendChild(list);
+      card.appendChild(buildAddContainerOverrideRow(con));
+      els.containers.appendChild(card);
+    });
+  }
+
+  function buildContainerOverrideRow(con, key) {
+    var flag    = flagByKey(key) || { key: key, kind: "boolean" };
+    var entry   = con.overrides[key] || { value: defaultValueFor(flag) };
+    var enabled = entry.enabled === true;
+    return buildManagedFlagRow({
+      flag: flag,
+      entry: entry,
+      leftChecked: enabled,
+      leftTitle: enabled ? "Active in this container — click to pause"
+                         : "Paused — click to activate",
+      onLeft: function (checked) {
+        con.overrides[key].enabled = checked;
+        saveState().then(renderContainers);
+      },
+      valueDisabled: !enabled,
+      onValue: function (patch) {
+        var e = con.overrides[key] || { enabled: true };
+        e.value = patch.value;
+        if (typeof patch.variation === "number") e.variation = patch.variation;
+        con.overrides[key] = e;
+        saveState();
+      },
+      onRemove: function () {
+        delete con.overrides[key];
+        saveState().then(renderContainers);
+      },
+    });
+  }
+
+  function buildAddContainerOverrideRow(con) {
+    var avail = overridableFlags().filter(function (f) {
+      return f.clientSideAvailable !== false && !con.overrides[f.key];
+    });
+    return buildSearchCombobox(avail, "Add override…", function (key) {
+      var flag  = flagByKey(key);
+      var entry = { value: defaultValueFor(flag), enabled: true };
+      if (flag && flag.kind === "boolean") entry.variation = boolVariation(false);
+      con.overrides[key] = entry;
+      saveState().then(renderContainers);
+    });
+  }
+
+  // =========================================================================
   // Render orchestration + tabs
   // =========================================================================
   function renderAll() {
@@ -913,6 +1269,7 @@
     renderOverrideSummary();
     renderGroups();
     renderDomains();
+    renderContainers();
   }
 
   function activateTab(name) {
@@ -1013,8 +1370,10 @@
   els.domainAdd.addEventListener("click", addDomain);
   els.domainPattern.addEventListener("keydown", function (e) { if (e.key === "Enter") addDomain(); });
 
+  els.containerAdd.addEventListener("click", addContainerProfile);
+
   els.clear.addEventListener("click", function () {
-    rich = { version: 1, globalOverrides: {}, groups: [], domains: [] };
+    rich = { version: 1, globalOverrides: {}, groups: [], domains: [], containers: [] };
     saveState().then(renderAll);
   });
 
@@ -1023,12 +1382,17 @@
   function hydrate(res) {
     rich = State
       ? State.migrate(res)
-      : { version: 1, globalOverrides: res["flagswap:overrides"] || {}, groups: [], domains: [] };
+      : { version: 1, globalOverrides: res["flagswap:overrides"] || {}, groups: [], domains: [], containers: [] };
     rich.version = 1;
     rich.globalOverrides = rich.globalOverrides || {};
     rich.groups  = rich.groups  || [];
     rich.domains = rich.domains || [];
+    rich.containers = rich.containers || [];
     discoveredFlags = res[K_DISC] || {};
+    // Permissive default: a source is included unless explicitly turned off.
+    var src = res[K_SRC] || {};
+    flagSources = { discovered: src.discovered !== false, manual: src.manual !== false };
+    syncState = res[K_SYNC] || {};
 
     populateDiscoveredKeys();
     updateSourceNote();
@@ -1042,14 +1406,14 @@
   function liveSync() {
     var ae = document.activeElement;
     if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
-    get([K_STATE, "flagswap:overrides", K_SEL, K_DISC]).then(function (res) {
+    get([K_STATE, "flagswap:overrides", K_SEL, K_DISC, K_SRC, K_SYNC]).then(function (res) {
       hydrate(res);
       return loadCachedFlags(res[K_SEL] || {});
     });
   }
 
   function init() {
-    return get([K_STATE, "flagswap:overrides", K_TOKEN, K_SEL, K_DISC]).then(function (res) {
+    return get([K_STATE, "flagswap:overrides", K_TOKEN, K_SEL, K_DISC, K_SRC, K_SYNC]).then(function (res) {
       hydrate(res);
       var selection = res[K_SEL] || {};
 
@@ -1062,16 +1426,24 @@
       return promise.then(function () {
         return loadCachedFlags(selection);
       });
+    }).then(function () {
+      // Container metadata is independent of storage state; load it once and
+      // re-render the containers view with real names + the "current" marker.
+      return Promise.all([loadContainerIdentities(), loadCurrentCookieStoreId()])
+        .then(renderContainers);
     });
   }
 
-  // Keep a docked sidebar in sync with external storage changes (popup is
-  // short-lived and re-reads on open, so it doesn't need this).
-  if (isPanel && chrome.storage && chrome.storage.onChanged) {
+  // Keep the view in sync with external storage changes. The docked sidebar is
+  // long-lived and needs this to reflect edits made elsewhere; the popup needs
+  // it too so that a sync finishing WHILE it's open surfaces the flag catalog
+  // (and thus the group/domain "Add flag/override" comboboxes) without a reopen.
+  if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener(function (changes, area) {
       if (area !== "local") return;
       for (var k in changes) {
         if (k === K_STATE || k === K_DISC || k === K_SEL ||
+            k === K_SRC || k === K_SYNC ||
             k.indexOf("flagswap:flagCache:") === 0) {
           liveSync();
           return;

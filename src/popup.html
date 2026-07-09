@@ -36,6 +36,9 @@
       <button class="tab" data-tab="domains" id="tab-domains">
         Domains<span class="count" id="count-domains">0</span>
       </button>
+      <button class="tab" data-tab="containers" id="tab-containers">
+        Containers<span class="count" id="count-containers">0</span>
+      </button>
     </div>
 
     <!-- ===== Flags panel ===== -->
@@ -48,9 +51,7 @@
         />
         <select id="flag-sort" title="Sort flags">
           <option value="name">Name</option>
-          <option value="override">Override</option>
           <option value="status">Status</option>
-          <option value="side">Side</option>
         </select>
         <button id="flag-sort-dir" class="icon-btn" title="Toggle sort direction">↑</button>
         <label class="toolbar-check" title="Show server-side flags">
@@ -58,7 +59,10 @@
         </label>
       </div>
       <p class="sub" id="override-summary"></p>
-      <div id="flags"></div>
+      <div id="flags-lists">
+        <div id="flags-pinned"></div>
+        <div id="flags"></div>
+      </div>
 
       <details id="manual-add">
         <summary>+ Add flag override</summary>
@@ -117,6 +121,25 @@
         <button id="domain-add" class="primary small">Add domain</button>
       </div>
       <div id="domains"></div>
+    </section>
+
+    <!-- ===== Containers panel ===== -->
+    <section class="panel" id="panel-containers">
+      <p class="help">
+        Container profiles scope overrides to a <strong>Firefox container</strong>
+        (contextual identity). Two tabs on the same site but in different
+        containers resolve to <strong>different</strong> flag values — set a flag
+        true in one, false in another, side by side.
+        <strong>Merge</strong> layers on top of everything else (highest
+        precedence). <strong>Solo</strong> isolates: only this container's flags
+        are overridden; all others fall back to the site's real values.
+      </p>
+      <p class="sub" id="container-current"></p>
+      <div class="btnrow">
+        <select id="container-picker"></select>
+        <button id="container-add" class="primary small">Add container</button>
+      </div>
+      <div id="containers"></div>
     </section>
 
     <footer>

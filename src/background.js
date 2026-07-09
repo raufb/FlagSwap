@@ -273,6 +273,15 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return false;
   }
 
+  // Report the requesting tab's Firefox contextual identity to the ISOLATED
+  // bridge, which cannot read it itself. We only expose sender.tab.cookieStoreId
+  // (no broad "tabs" permission needed) and respond synchronously.
+  if (msg.type === "flagswap:whoami") {
+    var csid = sender && sender.tab && sender.tab.cookieStoreId;
+    try { sendResponse({ cookieStoreId: csid || null }); } catch (e) {}
+    return false;
+  }
+
   if (msg.type === "flagswap:count") {
     var tabId = sender && sender.tab && sender.tab.id;
     if (typeof tabId === "number" && chrome.action && chrome.action.setBadgeText) {

@@ -24,6 +24,14 @@
  *       pattern: <string>,
  *       groupIds: [<groupId>, ...],
  *       overrides: { [flagKey]: { value, variation?, enabled } }
+ *     } ],
+ *     containers: [ {
+ *       enabled,
+ *       cookieStoreId: <string>,   // Firefox contextual identity, e.g. 'firefox-container-3'
+ *       name?, color?,             // display metadata (resolved from contextualIdentities)
+ *       mode: 'merge'|'solo',      // merge = highest-precedence layer; solo = isolate (ignore all other layers)
+ *       groupIds: [<groupId>, ...],
+ *       overrides: { [flagKey]: { value, variation?, enabled } }
  *     } ]
  *   }
  *
@@ -69,6 +77,7 @@
         globalOverrides: asObj(s.globalOverrides),
         groups: asArr(s.groups),
         domains: asArr(s.domains),
+        containers: asArr(s.containers),
       };
     }
 
@@ -79,11 +88,12 @@
         globalOverrides: raw[LEGACY_KEY],
         groups: [],
         domains: [],
+        containers: [],
       };
     }
 
     // 3) Nothing -> empty state.
-    return { version: 1, globalOverrides: {}, groups: [], domains: [] };
+    return { version: 1, globalOverrides: {}, groups: [], domains: [], containers: [] };
   }
 
   // ---- domain matching ----------------------------------------------------
@@ -212,13 +222,26 @@
    *           reference activates the group regardless of the group's global
    *           `enabled` flag (so groups can be scoped to specific domains)
    *        b. its individual overrides (enabled:true only)
+   *   4. the enabled container whose cookieStoreId equals `cookieStoreId`
+   *      (Firefox contextual identity of the requesting tab). This is the
+   *      HIGHEST-precedence layer. Two tabs in different containers on the same
+   *      host thus resolve to different values. A container may be:
+   *        - mode 'merge' (default): applied LAST over everything above, so its
+   *          flags win but non-container layers still show through for other keys
+   *        - mode 'solo': the accumulator is CLEARED first, so ONLY the
+   *          container's own flags are overridden (clean A/B isolation — every
+   *          other flag falls back to the page's real LD value)
+   *      per matched container, same order as domains: (a) groupIds then
+   *      (b) individual overrides.
    *
    * @param {object} state     normalized state (run migrate() first)
    * @param {string} hostname
+   * @param {string} [cookieStoreId]  requesting tab's contextual identity; when
+   *                                  omitted/empty the container layer is skipped
    * @returns {object} flat { [flagKey]: { value, variation?, enabled:true } }
    */
-  function resolveEffective(state, hostname) {
-    var s = isObj(state) ? state : { groups: [], domains: [], globalOverrides: {} };
+  function resolveEffective(state, hostname, cookieStoreId) {
+    var s = isObj(state) ? state : { groups: [], domains: [], globalOverrides: {}, containers: [] };
     var acc = {};
 
     // (1) global enabled groups, in array order
@@ -259,6 +282,26 @@
       }
       // (3b) domain's individual overrides
       applyOverrides(acc, dom.overrides);
+    }
+
+    // (4) container layer (highest precedence) — exact cookieStoreId match.
+    var csid = String(cookieStoreId == null ? "" : cookieStoreId);
+    if (csid) {
+      var containers = asArr(s.containers).filter(function (c) {
+        return isObj(c) && c.enabled === true && c.cookieStoreId === csid;
+      });
+      for (var m = 0; m < containers.length; m++) {
+        var con = containers[m];
+        // 'solo' isolates: drop everything resolved from the lower layers so
+        // ONLY this container's flags are overridden.
+        if (con.mode === "solo") acc = {};
+        var cids = asArr(con.groupIds);
+        for (var n = 0; n < cids.length; n++) {
+          var cgrp = findGroup(groups, cids[n]);
+          if (cgrp) applyGroupFlags(acc, cgrp.flags);
+        }
+        applyOverrides(acc, con.overrides);
+      }
     }
 
     return acc;

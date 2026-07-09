@@ -1,4 +1,5 @@
 {
+  "permissions": ["storage", "cookies", "contextualIdentities"],
   "background": {
     "scripts": ["src/ldapi.js", "src/background.js"]
   },
