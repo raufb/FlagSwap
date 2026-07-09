@@ -33,6 +33,19 @@ h1 {
   margin-top: 12px;
 }
 
+.source-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+.source-toggle + .source-toggle { border-top: 1px solid var(--border); }
+.source-toggle input { margin-top: 2px; flex: none; }
+.source-toggle > span { display: flex; flex-direction: column; gap: 2px; }
+.source-toggle .help { margin: 0; }
+
 .manual-flag-entry {
   display: flex;
   align-items: center;

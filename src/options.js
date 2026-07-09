@@ -21,6 +21,8 @@
   var K_BASEURL = "flagswap:ldBaseUrl";
   var K_SEL     = "flagswap:ldSelection";
   var K_DISC    = "flagswap:discoveredFlags";
+  var K_SRC     = "flagswap:flagSources";  // which flag sources feed override targets
+  var K_SYNC    = "flagswap:syncState";    // shared sync-in-progress signal for the popup
 
   function cacheKey(proj, env) { return "flagswap:flagCache:" + proj + ":" + env; }
 
@@ -37,6 +39,7 @@
     sync: $("sync"),
     project: $("ld-project"), env: $("ld-env"), csid: $("ld-csid"),
     syncBtn: $("ld-sync"), refresh: $("ld-refresh"), syncStatus: $("sync-status"),
+    srcDiscovered: $("src-discovered"), srcManual: $("src-manual"),
     manualKey: $("manual-key"), manualType: $("manual-type"),
     manualValueHost: $("manual-value-host"),
     manualAddBtn: $("manual-add-btn"), manualStatus: $("manual-status"),
@@ -60,6 +63,32 @@
   }
   function saveState() {
     var o = {}; o[K_STATE] = rich; return set(o);
+  }
+  function setSyncState(status, proj, env) {
+    var o = {}; o[K_SYNC] = { status: status, proj: proj, env: env, ts: Date.now() };
+    return set(o);
+  }
+
+  // ---- flag-source policy ----------------------------------------------------
+  // Synced is always a source; discovered + manual are additive opt-ins. Stored
+  // permissively (a source counts as on unless explicitly false).
+  function loadSources(src) {
+    src = src || {};
+    els.srcDiscovered.checked = src.discovered !== false;
+    els.srcManual.checked     = src.manual !== false;
+    applyManualPolicy();
+  }
+  function saveSources() {
+    var o = {};
+    o[K_SRC] = { discovered: els.srcDiscovered.checked, manual: els.srcManual.checked };
+    applyManualPolicy();
+    return set(o);
+  }
+  // Manual adds off → hide this page's manual-add form (existing manual flags
+  // stay listed and removable).
+  function applyManualPolicy() {
+    var form = document.querySelector(".manual-add-form");
+    if (form) form.style.display = els.srcManual.checked ? "" : "none";
   }
 
   // ---- SW messaging ----------------------------------------------------------
@@ -196,13 +225,21 @@
     var ck = cacheKey(proj, env);
     var doFetch = function () {
       setStatus(els.syncStatus, "Syncing flags…", null);
-      return sendSW({ type: "ld:flags", projectKey: proj, envKey: env }).then(function (res) {
-        if (!res.ok) { setStatus(els.syncStatus, "Sync failed: " + res.message, "err"); return; }
+      // Publish a shared "syncing" signal so the popup can show "Sync in
+      // progress…" instead of an empty flag list while this runs.
+      return setSyncState("syncing", proj, env).then(function () {
+        return sendSW({ type: "ld:flags", projectKey: proj, envKey: env });
+      }).then(function (res) {
+        if (!res.ok) {
+          setStatus(els.syncStatus, "Sync failed: " + res.message, "err");
+          return setSyncState("error", proj, env);
+        }
         var cacheObj = {};
         // ver 2: flags carry the served-value field (LD default, not just `on`).
         cacheObj[ck] = { flags: res.flags || [], ts: Date.now(), ver: 2 };
         return set(cacheObj).then(function () {
           setStatus(els.syncStatus, "Synced " + (res.flags || []).length + " flag(s).", "ok");
+          return setSyncState("idle", proj, env);
         });
       });
     };
@@ -416,6 +453,9 @@
   els.forget.addEventListener("click", forgetToken);
   els.project.addEventListener("change", function () { populateEnvDropdown(); persistSelection(); });
   els.env.addEventListener("change", function () { updateClientSideId(); persistSelection(); });
+
+  els.srcDiscovered.addEventListener("change", saveSources);
+  els.srcManual.addEventListener("change", saveSources);
   els.syncBtn.addEventListener("click", function () { syncFlags(false); });
   els.refresh.addEventListener("click", function () { syncFlags(true); });
   els.manualType.addEventListener("change", function () { setStatus(els.manualStatus, "", null); renderManualValueControl(); });
@@ -436,7 +476,7 @@
 
   // ---- init -----------------------------------------------------------------
   function init() {
-    return get([K_STATE, "flagswap:overrides", K_TOKEN, K_BASEURL, K_SEL, K_DISC]).then(function (res) {
+    return get([K_STATE, "flagswap:overrides", K_TOKEN, K_BASEURL, K_SEL, K_DISC, K_SRC]).then(function (res) {
       rich = State
         ? State.migrate(res)
         : { version: 1, globalOverrides: res["flagswap:overrides"] || {}, groups: [], domains: [] };
@@ -450,6 +490,7 @@
       if (res[K_BASEURL]) els.base.value = res[K_BASEURL];
       if (res[K_TOKEN])   els.token.placeholder = "•••••••• (saved — type to replace)";
 
+      loadSources(res[K_SRC]);
       populateDiscoveredKeys();
       renderManualFlagsList();
 

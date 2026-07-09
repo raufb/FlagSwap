@@ -67,6 +67,30 @@
       <p class="status" id="sync-status"></p>
     </section>
 
+    <!-- ===== Flag sources ===== -->
+    <section class="settings-section">
+      <h2>Flag Sources</h2>
+      <p class="help">
+        Which flag keys are offered when adding overrides to groups and domain
+        profiles. Flags synced from LaunchDarkly are always available; enable the
+        options below to also use keys from other sources.
+      </p>
+      <label class="source-toggle">
+        <input type="checkbox" id="src-discovered" />
+        <span>
+          <strong>Discovered via page interception</strong>
+          <span class="help">Keys observed live on the pages you visit.</span>
+        </span>
+      </label>
+      <label class="source-toggle">
+        <input type="checkbox" id="src-manual" />
+        <span>
+          <strong>Manual flag keys</strong>
+          <span class="help">Keys you type in yourself — usable even before a sync completes.</span>
+        </span>
+      </label>
+    </section>
+
     <!-- ===== Manual flag overrides ===== -->
     <section class="settings-section">
       <h2>Manual Flag Overrides</h2>
