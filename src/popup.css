@@ -31,6 +31,9 @@ body {
   display: flex;
   flex-direction: column;
   height: 560px;
+  /* The tab strip and cards manage their own inner overflow; the pane itself
+     must never scroll sideways (a 4th tab used to push it past the width). */
+  overflow-x: hidden;
 }
 h1,
 .sub,
@@ -87,6 +90,9 @@ h2 {
 /* ---- tabs ---- */
 .tabs {
   display: flex;
+  /* Wrap to a second row on narrow panes (280px sidebar) instead of
+     overflowing horizontally. Row-gap keeps wrapped rows from touching. */
+  flex-wrap: wrap;
   gap: 2px;
   margin: 10px 0;
   border-bottom: 1px solid var(--border);
@@ -101,6 +107,21 @@ h2 {
   color: var(--muted);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  /* Shrink to share the row evenly rather than each tab claiming its
+     min-content width (which summed past the pane width with 4 tabs). */
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+/* Truncate the label if a tab still can't fit; the count badge stays outside
+   so it's never the thing that gets clipped. */
+.tab .lbl {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tab.active {
   color: inherit;
@@ -112,7 +133,7 @@ h2 {
   background: var(--border);
   border-radius: 8px;
   padding: 0 5px;
-  margin-left: 4px;
+  flex: 0 0 auto;
 }
 .panel {
   display: none;
