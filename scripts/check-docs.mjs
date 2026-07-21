@@ -7,10 +7,16 @@
  * remotely-loaded asset — should fail a check rather than a review. Kept
  * dependency-free so it runs anywhere `npm test` does.
  *
+ * Every check runs against comment-stripped HTML: commented-out markup is
+ * inert, and flagging it produces failures with no way to fix them short of
+ * deleting the comment.
+ *
  * Checks per HTML file:
- *   1. Tags are balanced and properly nested.
+ *   1. Tags are balanced and properly nested. Stricter than HTML itself —
+ *      optional end tags (</p>, </li>) must be written explicitly. These are
+ *      hand-authored pages; the strictness is the point.
  *   2. No remotely-loaded subresources (<script src>, external stylesheet,
- *      remote <img>/<iframe>) — these pages must be self-contained.
+ *      remote <img>/<iframe>/favicon) — these pages must be self-contained.
  *   3. Local hrefs point at files that exist.
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -29,9 +35,9 @@ const VOID = new Set([
 const errors = [];
 const fail = (file, msg) => errors.push(`${file}: ${msg}`);
 
-function checkBalance(file, html) {
-  // Strip comments, then walk every tag.
-  const src = html.replace(/<!--[\s\S]*?-->/g, "");
+const stripComments = (html) => html.replace(/<!--[\s\S]*?-->/g, "");
+
+function checkBalance(file, src) {
   const stack = [];
   const tagRe = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)>/g;
   let m;
@@ -61,17 +67,20 @@ function checkBalance(file, html) {
   if (stack.length) fail(file, `unclosed tag(s): ${stack.join(" > ")}`);
 }
 
-function checkSelfContained(file, html) {
+function checkSelfContained(file, src) {
   const remote = /(?:src|href)\s*=\s*["'](https?:)?\/\//i;
-  for (const tag of html.match(/<(script|link|img|iframe)\b[^>]*>/gi) || []) {
+  for (const tag of src.match(/<(script|link|img|iframe)\b[^>]*>/gi) || []) {
     // Outbound <a href> links are fine; these four element types are not.
-    if (/rel\s*=\s*["']?(icon|canonical|alternate)/i.test(tag)) continue;
+    // rel=canonical/alternate legitimately point off-site and are metadata, not
+    // a fetched subresource. A remote rel=icon IS fetched, so it must not be
+    // exempt here.
+    if (/rel\s*=\s*["']?(canonical|alternate)/i.test(tag)) continue;
     if (remote.test(tag)) fail(file, `remotely-loaded subresource: ${tag.trim()}`);
   }
 }
 
-function checkLocalLinks(file, html) {
-  for (const m of html.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) {
+function checkLocalLinks(file, src) {
+  for (const m of src.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) {
     const href = m[1];
     if (/^(https?:|mailto:|data:|\/\/)/i.test(href)) continue;
     if (!existsSync(join(DOCS, href))) fail(file, `dead local link: ${href}`);
@@ -85,10 +94,10 @@ if (files.length === 0) {
 }
 
 for (const file of files) {
-  const html = readFileSync(join(DOCS, file), "utf8");
-  checkBalance(file, html);
-  checkSelfContained(file, html);
-  checkLocalLinks(file, html);
+  const src = stripComments(readFileSync(join(DOCS, file), "utf8"));
+  checkBalance(file, src);
+  checkSelfContained(file, src);
+  checkLocalLinks(file, src);
 }
 
 if (errors.length) {
