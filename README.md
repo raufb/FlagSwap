@@ -110,7 +110,7 @@ actually evaluate LD flags; everywhere else the wrappers are pass-through. If yo
 build for a fixed set of origins, narrowing the match is the safer choice.
 
 `host_permissions` grants LaunchDarkly's REST API hosts —
-`https://app.launchdarkly.com/*` plus `https://app.eu.launchdarkly.com/*` and
+`https://app.launchdarkly.com/*`, with `https://app.eu.launchdarkly.com/*` and
 `https://app.launchdarkly.us/*` for the EU and US-federal instances, selectable
 in the options page. They are used **only** by the optional flag-list sync in the
 service worker; the interception path uses no credentials and no host permission
