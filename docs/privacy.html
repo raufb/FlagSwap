@@ -51,8 +51,16 @@
         (for example <code>firefox-container-3</code>), the name and colour
         Firefox already displays for it, and the overrides you assign to it.</li>
     <li>Extension settings.</li>
+    <li>Flags discovered on pages you visit. When a page you open evaluates
+        LaunchDarkly flags, FlagSwap records each flag's key, its type
+        (boolean, string, number, JSON) and its current value, so it can offer
+        the right control for that flag without requiring a LaunchDarkly account.
+        Nothing else about the page is recorded &mdash; no page content, no URLs,
+        no browsing history &mdash; and this list, like everything else here,
+        stays on your device.</li>
     <li>An optional LaunchDarkly REST API token that you choose to enter, used only
-        for the optional flag-sync feature.</li>
+        for the optional flag-sync feature, and the flag definitions retrieved with
+        it.</li>
   </ul>
   <p>
     This data never leaves your device except as described under
@@ -63,16 +71,20 @@
   <h2>Network activity</h2>
   <ul>
     <li>
-      <strong>On your application's pages:</strong> FlagSwap runs on the pages where
-      your application loads the LaunchDarkly SDK so it can substitute your configured
-      flag values. It reads and modifies the LaunchDarkly flag-evaluation traffic
-      locally in the page; it does not send that traffic to us.
+      <strong>On the pages you visit:</strong> because LaunchDarkly-powered apps run
+      on arbitrary hosts &mdash; localhost, staging subdomains, per-customer production
+      domains &mdash; FlagSwap's content script is loaded on every page, and becomes
+      active only on pages that actually evaluate LaunchDarkly flags. On those pages it
+      reads and modifies the LaunchDarkly flag-evaluation traffic locally, in the page,
+      so your configured values are used. On every other page it does nothing. In
+      neither case is any page content, URL, or traffic sent to us or to anyone else.
     </li>
     <li>
       <strong>Optional flag sync:</strong> if you enter a LaunchDarkly API token,
       FlagSwap uses it to request your own flag definitions directly from
-      LaunchDarkly's REST API (<code>https://app.launchdarkly.com</code> or your
-      configured LaunchDarkly host). This request goes only to LaunchDarkly, using
+      LaunchDarkly's REST API &mdash; at <code>app.launchdarkly.com</code>, or at
+      <code>app.eu.launchdarkly.com</code> / <code>app.launchdarkly.us</code> if you
+      select the EU or US-federal region. This request goes only to LaunchDarkly, using
       your token, and is subject to
       <a href="https://launchdarkly.com/policies/privacy/">LaunchDarkly's privacy policy</a>.
       The token and the retrieved flag data are stored only in your browser.
