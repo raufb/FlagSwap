@@ -1,6 +1,8 @@
 # Chrome Web Store submission — copy-paste fields
 
-FlagSwap v0.2.1 · package: `dist/packages/flagswap-0.2.1-chrome.zip` (verified in sync with `dist/chrome/manifest.json`)
+Internal submission worksheet — not user documentation.
+
+FlagSwap v0.2.1 · package: `dist/packages/flagswap-0.2.1-chrome.zip`, produced by `npm run package` (`dist/` is generated and not checked in; the zip was verified in sync with `dist/chrome/manifest.json`).
 
 ---
 
@@ -12,11 +14,11 @@ FlagSwap lets QA engineers and developers override LaunchDarkly client-side feat
 
 ### `storage` — justification
 
-Storage is used to persist the user's own configuration locally: their flag overrides, named flag groups, per-domain/subdomain profiles, and settings. This data is required for the extension's core function — remembering which flags to override — and stays on the user's machine (chrome.storage). No storage data is transmitted to us.
+Storage is used to persist the user's own configuration locally: their flag overrides, named flag groups, per-domain/subdomain profiles, and settings. It also caches the flags discovered on pages the user visits (flag key, type, and current value) so the UI can offer the correct control per flag without an API token. This data is required for the extension's core function — remembering which flags to override — and stays on the user's machine (chrome.storage). No storage data is transmitted to us.
 
 ### Host permission — justification
 
-FlagSwap must run on whatever domain the user's application is served from. LaunchDarkly-powered apps run on arbitrary and changing hosts — localhost, staging subdomains, and production domains that differ per customer — so the content script matches all URLs to apply the user's flag overrides wherever their app runs. It only activates flag interception on pages that load the LaunchDarkly SDK; on all other pages it does nothing. The `https://app.launchdarkly.com/*` host access is used solely for the optional flag-sync feature, which reads the user's own flag definitions from LaunchDarkly's REST API using an API token the user supplies.
+FlagSwap must run on whatever domain the user's application is served from. LaunchDarkly-powered apps run on arbitrary and changing hosts — localhost, staging subdomains, and production domains that differ per customer — so the content script matches all URLs to apply the user's flag overrides wherever their app runs. It only activates flag interception on pages that load the LaunchDarkly SDK; on all other pages it does nothing. The three LaunchDarkly host permissions (`https://app.launchdarkly.com/*`, plus `https://app.eu.launchdarkly.com/*` and `https://app.launchdarkly.us/*` for customers on LaunchDarkly's EU and US-federal instances — the user picks one region in the extension's options) are used solely for the optional flag-sync feature, which reads the user's own flag definitions from LaunchDarkly's REST API using an API token the user supplies.
 
 ### `sidePanel` — justification
 
