@@ -43,9 +43,10 @@ FlagSwap/
 │   ├── popup.html/.css/.js  # Popup + side panel UI (flag list, overrides, groups).
 │   ├── options.html/.css/.js# Options page (LD connection, profiles, containers, settings).
 │   └── icons/               # Extension icons + source SVGs.
-├── docs/
-│   ├── privacy.html         # Published privacy policy (GitHub Pages source).
-│   └── chrome-store-submission.md  # Internal store-submission worksheet.
+├── docs/                    # GitHub Pages source — everything here is PUBLISHED.
+│   └── privacy.html         # Published privacy policy.
+├── notes/
+│   └── chrome-store-submission.md  # Internal store-submission worksheet (not published).
 ├── demo/
 │   ├── index.html           # Loads real LD client SDK v3 (public demo env); the tier-1 demo page.
 │   └── tier2.html           # useReport + streaming transport probe (tier-2 trial env).

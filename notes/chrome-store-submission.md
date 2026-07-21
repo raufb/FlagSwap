@@ -1,6 +1,8 @@
 # Chrome Web Store submission — copy-paste fields
 
-Internal submission worksheet — not user documentation.
+Internal submission worksheet — not user documentation. It lives in `notes/`
+rather than `docs/` on purpose: `docs/` is the GitHub Pages source, so anything
+placed there is served publicly next to the privacy policy.
 
 FlagSwap v0.2.1 · package: `dist/packages/flagswap-0.2.1-chrome.zip`, produced by `npm run package` (`dist/` is generated and not checked in; the zip was verified in sync with `dist/chrome/manifest.json`).
 
