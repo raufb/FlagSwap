@@ -1,12 +1,23 @@
-# FlagSwap (spike)
+# FlagSwap
 
-An MV3 Chrome extension that **overrides LaunchDarkly client-side feature flags**
-in the browser by intercepting the LaunchDarkly JS client SDK. This is a
-**proof-of-concept** to de-risk the interception layer — correctness and
-verifiability over polish.
+An MV3 browser extension (Chrome/Edge/Brave and Firefox) that **overrides
+LaunchDarkly client-side feature flags** in the browser by intercepting the
+LaunchDarkly JS client SDK. Built for QA engineers and developers who need to
+see a feature in a specific on/off state without touching flag configuration.
 
-It works against LaunchDarkly's shared public **demo** environment
-(`5cc8a87be4b564081fd2fd70`), which needs no account.
+Overrides are local and read-only: they rewrite the flag-evaluation response as
+it arrives in *your* browser and can never change real flag state or affect
+anyone else. See [Safety / how it works](#safety--how-it-works).
+
+MIT-licensed — see [LICENSE](LICENSE).
+
+The bundled demo page runs against LaunchDarkly's shared **public demo**
+environment (`5cc8a87be4b564081fd2fd70`), which needs no account. That ID is
+LaunchDarkly's own published demo identifier, not a customer's, so it is checked
+in deliberately — the demo cannot work without it. Client-side IDs are public by
+design (they ship in the page bundle of every app that loads the SDK), but the
+fixtures under `test/fixtures/` still use obviously-fake patterned IDs so no
+real environment is implied by test data.
 
 ---
 
@@ -14,32 +25,45 @@ It works against LaunchDarkly's shared public **demo** environment
 
 ```
 FlagSwap/
+├── LICENSE                  # MIT
 ├── CLAUDE.md
 ├── README.md
-├── manifest.json            # MV3 manifest (content scripts + SW + host_permissions for LD API)
-├── package.json             # npm test / e2e / e2e:tier2 / smoke:ld scripts
+├── manifest.base.json       # Shared MV3 manifest (content scripts + host_permissions for LD API)
+├── manifest.chrome.json     # Chromium overlay (service_worker, sidePanel)
+├── manifest.firefox.json    # Firefox overlay (background scripts, sidebar, containers)
+├── package.json             # npm test / e2e / e2e:tier2 / smoke:ld / build / package scripts
 ├── src/
 │   ├── core.js              # PURE interception logic (UMD: Node + browser). All interception business logic.
 │   ├── inject.js            # MAIN world: wraps fetch + EventSource + XMLHttpRequest. Thin glue over core.
 │   ├── bridge.js            # ISOLATED world: chrome.storage -> CustomEvent -> MAIN world.
+│   ├── banner.js            # ISOLATED world: on-page override banner + toolbar badge count.
+│   ├── state.js             # PURE storage-schema normalization + override resolution (UMD).
 │   ├── ldapi.js             # PURE LD REST API shaping (UMD: Node + browser/SW). Unit-testable.
 │   ├── background.js        # Service worker: the ONLY place LD API calls + token handling happen.
-│   ├── popup.html           # Popup UI markup (LD connection + sync + flag list).
-│   └── popup.js             # Popup UI logic (token, project/env sync, flag overrides, demo fallback).
+│   ├── popup.html/.css/.js  # Popup + side panel UI (flag list, overrides, groups).
+│   ├── options.html/.css/.js# Options page (LD connection, profiles, containers, settings).
+│   └── icons/               # Extension icons + source SVGs.
+├── docs/
+│   ├── privacy.html         # Published privacy policy (GitHub Pages source).
+│   └── chrome-store-submission.md  # Internal store-submission worksheet.
 ├── demo/
-│   ├── index.html           # Loads real LD client SDK v3 (demo env); the tier-1 demo page.
+│   ├── index.html           # Loads real LD client SDK v3 (public demo env); the tier-1 demo page.
 │   └── tier2.html           # useReport + streaming transport probe (tier-2 trial env).
 ├── scripts/
+│   ├── build.mjs            # Writes dist/chrome/ and dist/firefox/ from src/ + manifests.
+│   ├── package.mjs          # Zips the built targets for store upload.
+│   ├── gen-icons.mjs        # Renders the PNG icon set from the source SVG.
 │   └── ld-smoke.mjs         # Live LD API smoke test (reads LD_TOKEN from env; never hardcoded).
 └── test/
     ├── core.test.js         # Interception unit tests (node:test).
     ├── ldapi.test.js        # LD API shaping unit tests (normalize/paginate/backoff).
+    ├── state.test.js        # Storage-schema + override-resolution unit tests.
     ├── e2e.spec.mjs         # Tier-1 Playwright E2E: override reflected in rendered DOM.
     ├── e2e-tier2.spec.mjs   # Tier-2 E2E: useReport/XHR transport coverage.
     └── fixtures/
-        ├── eval.json        # REAL captured poll/`put` payload from LD demo env.
+        ├── eval.json        # REAL captured poll/`put` payload from the public LD demo env.
         ├── patch.json       # Hand-authored SSE `patch` fixture.
-        ├── projects.json    # LD /projects?expand=environments fixture (2 projects, multi-env).
+        ├── projects.json    # LD /projects?expand=environments fixture (2 projects, multi-env, fake IDs).
         ├── flags.json       # LD /flags page 1 (boolean + multivariate + server-side + _links.next).
         └── flags-page2.json # LD /flags page 2 (legacy includeInSnippet + archived; exercises pagination).
 ```
@@ -78,11 +102,19 @@ Then, in either browser:
 
 ### Permissions / match patterns
 
-`manifest.json` uses a broad `*://*/*` match for the spike so the wrappers
-install on any page that might host the LD SDK (including the demo served from
-localhost). **For production, narrow this** to the specific app origins QA needs.
-`host_permissions` grants only `https://app.launchdarkly.com/*` (EU/US bases are
-present as commented examples; add them if you use those regions).
+`manifest.base.json` uses a broad `*://*/*` match so the wrappers install on any
+page that might host the LD SDK — LD-powered apps live on arbitrary and changing
+hosts (localhost, staging subdomains, per-customer production domains), and the
+demo is served from localhost. Interception only *activates* on pages that
+actually evaluate LD flags; everywhere else the wrappers are pass-through. If you
+build for a fixed set of origins, narrowing the match is the safer choice.
+
+`host_permissions` grants LaunchDarkly's REST API hosts —
+`https://app.launchdarkly.com/*` plus `https://app.eu.launchdarkly.com/*` and
+`https://app.launchdarkly.us/*` for the EU and US-federal instances, selectable
+in the options page. They are used **only** by the optional flag-list sync in the
+service worker; the interception path uses no credentials and no host permission
+at all.
 
 ---
 
@@ -145,8 +177,8 @@ client-side/interceptable, and one normalized sample flag. (Run without
 6. To verify interception end-to-end, point the override at a flag your app reads
    and reload the app tab (use the env's client-side ID shown in the popup).
 
-When no token is configured the popup falls back to the original 4 demo flags, so
-the spike still works offline.
+When no token is configured the popup falls back to the 4 demo flags, so the
+extension still works offline and without a LaunchDarkly account.
 
 ---
 
@@ -158,18 +190,19 @@ the spike still works offline.
 npm test
 ```
 
-Runs `node --test test/core.test.js test/ldapi.test.js` (built-in test runner,
-no deps). Covers interception logic (against the **real** `eval.json` +
-`patch.json` fixtures) and the LD API shaping logic (`normalizeFlags`,
+Runs `node --test test/core.test.js test/ldapi.test.js test/state.test.js`
+(built-in test runner, no deps). Covers interception logic (against the **real**
+`eval.json` + `patch.json` fixtures), the LD API shaping logic (`normalizeFlags`,
 `normalizeProjects`, `parseNextLink`, `computeBackoffMs`, against the
-hand-authored `projects.json` / `flags.json` / `flags-page2.json` fixtures).
+hand-authored `projects.json` / `flags.json` / `flags-page2.json` fixtures), and
+the storage-schema normalization + override resolution in `state.js`.
 
 Current output:
 
 ```
-1..54
-# tests 54
-# pass 54
+1..67
+# tests 67
+# pass 67
 # fail 0
 ```
 
@@ -382,8 +415,8 @@ real server flag state, and they affect only your own browser.**
   `MessageEvent`s carry `data`, `lastEventId`, `origin`, and `type`, but not a
   live `source`/`target` reference. LD's SDK only reads `data`, so this is fine in
   practice but is a deviation from a perfectly faithful event.
-- **Broad `*://*/*` match.** Convenient for the spike; should be narrowed for
-  production.
+- **Broad `*://*/*` match.** Required to reach apps on arbitrary hosts; narrow it
+  if you deploy against a known, fixed set of origins.
 
 ### LD flag-list sync — coverage gaps (honest)
 
@@ -434,4 +467,24 @@ real server flag state, and they affect only your own browser.**
   an expired token / offline. This is an addition beyond the spec's "cache for
   instant reopen", motivated by a failure observed in testing where a bad token
   blanked the list.
-```
+
+---
+
+## Privacy
+
+FlagSwap collects nothing and transmits nothing. All configuration — overrides,
+groups, profiles, settings, and any LD API token you enter — is stored in
+`chrome.storage.local` on your own machine. The only network request FlagSwap
+originates is the optional flag-list sync, which goes directly to LaunchDarkly's
+REST API with your own token. Full policy: [`docs/privacy.html`](docs/privacy.html)
+(published at <https://raufb.github.io/FlagSwap/privacy.html>).
+
+## Contributing
+
+Issues and pull requests are welcome. Please run `npm test` before opening a PR —
+the unit suite is the authoritative gate, and E2E (`npm run e2e`) needs a headed
+browser under `xvfb`.
+
+## License
+
+[MIT](LICENSE) © Rauf Babayev
