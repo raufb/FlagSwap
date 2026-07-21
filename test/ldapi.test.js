@@ -36,10 +36,10 @@ test("normalizeProjects: client-side ID equals env _id, secrets dropped", () => 
   assert.strictEqual(prod.key, "production");
   assert.strictEqual(prod.name, "Production");
   // env._id IS the client-side ID
-  assert.strictEqual(prod.clientSideId, "5cc8a87be4b564081fd2fd70");
+  assert.strictEqual(prod.clientSideId, "1111aaaa2222bbbb3333cccc");
 
   const testEnv = def.environments[1];
-  assert.strictEqual(testEnv.clientSideId, "6a362e921ef8180a8ad24218");
+  assert.strictEqual(testEnv.clientSideId, "2222bbbb3333cccc4444dddd");
 
   // NEVER surface secrets
   const serialized = JSON.stringify(out);

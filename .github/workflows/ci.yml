@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # No install step: the unit suite and the docs check use only Node
+      # built-ins. Playwright (E2E) is a devDependency and stays out of CI.
+      - name: Unit tests
+        run: npm test
+      - name: Docs check
+        run: npm run check:docs
+      - name: Build both targets
+        run: npm run build

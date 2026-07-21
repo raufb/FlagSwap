@@ -6,7 +6,7 @@
       "environments": {
         "items": [
           {
-            "_id": "5cc8a87be4b564081fd2fd70",
+            "_id": "1111aaaa2222bbbb3333cccc",
             "key": "production",
             "name": "Production",
             "apiKey": "sdk-REDACTED-SECRET-DO-NOT-STORE",
@@ -14,7 +14,7 @@
             "color": "417505"
           },
           {
-            "_id": "6a362e921ef8180a8ad24218",
+            "_id": "2222bbbb3333cccc4444dddd",
             "key": "test",
             "name": "Test",
             "apiKey": "sdk-REDACTED-SECRET-DO-NOT-STORE-2",

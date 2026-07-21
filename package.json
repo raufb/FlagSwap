@@ -2,11 +2,19 @@
   "name": "flagswap",
   "version": "0.2.1",
   "private": true,
-  "description": "MV3 browser extension that overrides LaunchDarkly client-side feature flags (PoC).",
+  "description": "MV3 browser extension that overrides LaunchDarkly client-side feature flags.",
+  "license": "MIT",
+  "author": "Rauf Babayev",
+  "homepage": "https://github.com/raufb/FlagSwap",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raufb/FlagSwap.git"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "package": "npm run build && node scripts/package.mjs",
     "test": "node --test test/core.test.js test/ldapi.test.js test/state.test.js",
+    "check:docs": "node scripts/check-docs.mjs",
     "e2e": "npm run build && xvfb-run -a node --test test/e2e.spec.mjs",
     "e2e:tier2": "npm run build && xvfb-run -a node --test test/e2e-tier2.spec.mjs",
     "smoke:ld": "node scripts/ld-smoke.mjs",

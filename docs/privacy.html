@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FlagSwap — Privacy Policy</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
+      color: #1a1a1a; background: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #161616; }
+      a { color: #7ab7ff; }
+    }
+    h1 { font-size: 1.7rem; margin-bottom: .25rem; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; }
+    .updated { color: #888; font-size: .9rem; margin-top: 0; }
+    ul { padding-left: 1.25rem; }
+    code { font-size: .9em; }
+    footer { margin-top: 3rem; font-size: .9rem; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>FlagSwap Privacy Policy</h1>
+  <p class="updated">Last updated: 20 July 2026</p>
+
+  <p>
+    FlagSwap is a browser extension that lets QA engineers and developers override
+    LaunchDarkly client-side feature flags in their own browser. This policy explains
+    what data the extension handles and how.
+  </p>
+
+  <h2>Summary</h2>
+  <p>
+    <strong>FlagSwap does not collect, transmit, or sell any personal data.</strong>
+    All configuration stays on your own device. There are no analytics, no trackers,
+    and no third-party services.
+  </p>
+
+  <h2>What data FlagSwap stores</h2>
+  <p>FlagSwap stores the following <em>locally in your browser</em> using the
+  browser's <code>storage</code> API:</p>
+  <ul>
+    <li>Your feature-flag overrides (which flags you set on or off).</li>
+    <li>Named flag groups you create.</li>
+    <li>Per-domain and per-subdomain profiles.</li>
+    <li>Per-container profiles (Firefox only): the container's identifier
+        (for example <code>firefox-container-3</code>), the name and colour
+        Firefox already displays for it, and the overrides you assign to it.</li>
+    <li>Extension settings.</li>
+    <li>Flags discovered on pages you visit. When a page you open evaluates
+        LaunchDarkly flags, FlagSwap records each flag's key, its type
+        (boolean, string, number, JSON) and its current value, so it can offer
+        the right control for that flag without requiring a LaunchDarkly account.
+        Nothing else about the page is recorded &mdash; no page content, no URLs,
+        no browsing history &mdash; and this list, like everything else here,
+        stays on your device.</li>
+    <li>An optional LaunchDarkly REST API token that you choose to enter, used only
+        for the optional flag-sync feature, and the flag definitions retrieved with
+        it.</li>
+  </ul>
+  <p>
+    This data never leaves your device except as described under
+    &ldquo;Network activity&rdquo; below. It is not sent to the developer or to any
+    server we control. We have no access to it.
+  </p>
+
+  <h2>Network activity</h2>
+  <ul>
+    <li>
+      <strong>On the pages you visit:</strong> because LaunchDarkly-powered apps run
+      on arbitrary hosts &mdash; localhost, staging subdomains, per-customer production
+      domains &mdash; FlagSwap's content script is loaded on every page, and becomes
+      active only on pages that actually evaluate LaunchDarkly flags. On those pages it
+      reads and modifies the LaunchDarkly flag-evaluation traffic locally, in the page,
+      so your configured values are used. On every other page it does nothing. In
+      neither case is any page content, URL, or traffic sent to us or to anyone else.
+    </li>
+    <li>
+      <strong>Optional flag sync:</strong> if you enter a LaunchDarkly API token,
+      FlagSwap uses it to request your own flag definitions directly from
+      LaunchDarkly's REST API &mdash; at <code>app.launchdarkly.com</code>, or at
+      <code>app.eu.launchdarkly.com</code> / <code>app.launchdarkly.us</code> if you
+      select the EU or US-federal region. This request goes only to LaunchDarkly, using
+      your token, and is subject to
+      <a href="https://launchdarkly.com/policies/privacy/">LaunchDarkly's privacy policy</a>.
+      The token and the retrieved flag data are stored only in your browser.
+    </li>
+  </ul>
+
+  <h2>Firefox containers</h2>
+  <p>
+    On Firefox, FlagSwap can scope overrides to a container (a
+    &ldquo;contextual identity&rdquo;), so tabs on the same site in different
+    containers can receive different flag values. This feature requires two
+    Firefox permissions, and it is worth being precise about what they are used
+    for:
+  </p>
+  <ul>
+    <li>
+      <strong><code>cookies</code></strong> — requested only because Firefox uses
+      this permission to decide whether an extension may see which container a
+      tab belongs to. <strong>FlagSwap never reads, writes, or transmits the
+      contents of your cookies.</strong> It uses nothing from this permission but
+      the container identifier.
+    </li>
+    <li>
+      <strong><code>contextualIdentities</code></strong> — used to list your
+      containers by their existing name and colour, so you can pick one when
+      creating a container profile.
+    </li>
+  </ul>
+  <p>
+    Determining which container the current tab belongs to is a message passed
+    between FlagSwap's own components inside your browser. It involves no network
+    request and no server. Container names and identifiers are stored locally with
+    the rest of your configuration and are never transmitted.
+  </p>
+  <p>
+    The Chrome build of FlagSwap does not request either permission, and the
+    container feature is inactive there.
+  </p>
+
+  <h2>How your data is used</h2>
+  <p>
+    Stored data is used solely to provide the extension's function: applying your flag
+    overrides and remembering your groups, profiles, and settings between sessions.
+    FlagSwap does not use your data for advertising, profiling, credit assessment, or
+    any purpose unrelated to its single purpose.
+  </p>
+
+  <h2>Data sharing</h2>
+  <p>FlagSwap does not share, transfer, or sell your data to anyone.</p>
+
+  <h2>Data retention and removal</h2>
+  <p>
+    Data persists in your browser until you remove it — by clearing an override or
+    profile within FlagSwap, or by uninstalling the extension, which deletes all of
+    its stored data. You can remove a saved API token at any time from the
+    extension's settings.
+  </p>
+
+  <h2>Children</h2>
+  <p>FlagSwap is a developer tool and is not directed to children.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>
+    If this policy changes, the updated version will be posted at this URL with a new
+    &ldquo;Last updated&rdquo; date.
+  </p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a href="mailto:rauf@babayev.com">rauf@babayev.com</a></p>
+
+  <footer>FlagSwap · Rauf Babayev</footer>
+</body>
+</html>
